@@ -9,13 +9,17 @@
 
   UEFI_HII_RESOURCE_SECTION      = TRUE
 [Sources]
+  RussianFont.c
 	SmokelessRuntimeEFIPatcher.c
   Utility.c
   OpCode.c
+
 [Packages]
+  SREPPkg/SmokelessRuntimeEFIPatcher.dec
 	MdePkg/MdePkg.dec
   MdeModulePkg/MdeModulePkg.dec
   CryptoPkg/CryptoPkg.dec
+  
 [LibraryClasses]
   UefiApplicationEntryPoint
   UefiLib
@@ -30,18 +34,20 @@
   DevicePathLib
 
 [Protocols]
-  gEfiLoadedImageProtocolGuid            ## CONSUMES
+  gEfiLoadedImageProtocolGuid                   ## CONSUMES
   gEfiSimpleFileSystemProtocolGuid              ## CONSUMES
   gEfiLoadFileProtocolGuid                      ## CONSUMES
   gEfiHiiConfigAccessProtocolGuid               ## CONSUMES
   gEfiSerialIoProtocolGuid                      ## CONSUMES
   gEfiDevicePathToTextProtocolGuid              ## CONSUMES
-  gEfiFirmwareVolume2ProtocolGuid
-  gEdkiiFormBrowserEx2ProtocolGuid     
-  gEdkiiFormBrowserExProtocolGuid
-  gEfiHiiPopupProtocolGuid
-  gEdkiiFormDisplayEngineProtocolGuid
+  gEfiShellParametersProtocolGuid               ## CONSUMES
+  gEfiFirmwareVolume2ProtocolGuid               ## CONSUMES
+  gEdkiiFormBrowserEx2ProtocolGuid              ## CONSUMES
+  gEdkiiFormBrowserExProtocolGuid               ## CONSUMES
+  gEfiHiiPopupProtocolGuid                      ## CONSUMES
+  gEdkiiFormDisplayEngineProtocolGuid           ## CONSUMES
 [Guids]
   gEfiAcpiTableGuid
   gEfiAcpi20TableGuid
   gEfiDxeServicesTableGuid
+  gHIIRussianFontGuid

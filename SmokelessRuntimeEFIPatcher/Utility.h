@@ -22,16 +22,78 @@
 #include <PiDxe.h>
 #include <Protocol/FirmwareVolume2.h>
 #include <Library/BaseMemoryLib.h>
+#include <Protocol/RegularExpressionProtocol.h>
 
-CHAR16 *
-FindLoadedImageFileName(
-    IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage);
+//Needed for ConvertStrToGuid
+#define Align4(Value) (((Value)+3) & ~3)
+#define Align8(Value) (((Value)+7) & ~7)
+#define IS_COMMA(a)                ((a) == L',')
+#define IS_HYPHEN(a)               ((a) == L'-')
+#define IS_DOT(a)                  ((a) == L'.')
+#define IS_LEFT_PARENTH(a)         ((a) == L'(')
+#define IS_RIGHT_PARENTH(a)        ((a) == L')')
+#define IS_SLASH(a)                ((a) == L'/')
+#define IS_NULL(a)                 ((a) == L'\0')
 
-EFI_STATUS LoadandRunImage(EFI_HANDLE ImageHandle,
-                           EFI_SYSTEM_TABLE *SystemTable,
-                           CHAR16 *FileName,
-                           EFI_HANDLE *AppImageHandle);
+//Set default lang Rus
+BOOLEAN ENG = FALSE;
 
-UINT8 *FindBaseAddressFromName(const CHAR16 *Name);
+//Initizalize log function
+VOID LogToFile(
+  EFI_FILE *LogFile,
+  CHAR16 *String
+);
 
-EFI_STATUS LocateAndLoadFvFromName(CHAR16 *Name, EFI_SECTION_TYPE Section_Type,UINT8 **Buffer,UINTN *BufferSize);
+CHAR16 *FindLoadedImageFileName(
+  IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage
+);
+
+UINTN FindLoadedImageBufferSize(
+  IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage
+);
+
+EFI_STATUS LoadandRunImage(
+  EFI_HANDLE ImageHandle,
+  EFI_SYSTEM_TABLE *SystemTable,
+  CHAR16 *FileName,
+  EFI_HANDLE *AppImageHandle
+);
+
+UINT8 *FindBaseAddressFromName(
+  const CHAR16 *Name
+);
+
+EFI_STATUS LocateAndLoadFvFromName(
+  CHAR16 *Name,
+  EFI_SECTION_TYPE Section_Type,
+  UINT8 **Buffer,
+  UINTN *BufferSize
+);
+
+EFI_STATUS LocateAndLoadFvFromGuid(
+  EFI_GUID GUID16,
+  EFI_SECTION_TYPE Section_Type,
+  UINT8 **Buffer,
+  UINTN *BufferSize
+);
+
+EFI_STATUS
+RegexMatch(
+  IN      UINT8 *DUMP,
+  IN      CHAR16 *Pattern16,
+  IN      UINT16 Size,
+  OUT     BOOLEAN *Result
+);
+
+/*
+EFI_STATUS ConvertStrToGuid(
+  IN      CHAR16 *Str,
+  OUT     EFI_GUID *Guid
+);
+
+EFI_STATUS ConvertStrToBuf(
+  OUT     UINT8 *Buf,
+  IN      UINTN  BufferLength,
+  IN      CHAR16 *Str
+);
+*/

@@ -23,7 +23,44 @@
 #include <Protocol/FirmwareVolume2.h>
 #include <Library/BaseMemoryLib.h>
 
-EFI_STATUS LoadFS(EFI_HANDLE ImageHandle, CHAR8 *FileName,EFI_LOADED_IMAGE_PROTOCOL **ImageInfo, EFI_HANDLE *AppImageHandle);
-EFI_STATUS LoadFV(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROTOCOL **ImageInfo, EFI_HANDLE *AppImageHandle, EFI_SECTION_TYPE Section_Type);
-EFI_STATUS FindLoadedImageFromName(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROTOCOL **ImageInfo);
-EFI_STATUS Exec(EFI_HANDLE *AppImageHandle);
+EFI_STATUS FindLoadedImageFromName(
+  EFI_HANDLE ImageHandle,
+  CHAR8 *FileName,
+  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo
+);
+
+EFI_STATUS FindLoadedImageFromGUID(
+  EFI_HANDLE ImageHandle,
+  CHAR8 *FileName,
+  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  EFI_SECTION_TYPE Section_Type
+);
+
+EFI_STATUS LoadFS(
+  EFI_HANDLE ImageHandle,
+  CHAR8 *FileName,
+  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  EFI_HANDLE *AppImageHandle
+);
+
+EFI_STATUS LoadFV(
+  EFI_HANDLE ImageHandle,
+  CHAR8 *FileName,
+  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  EFI_HANDLE *AppImageHandle,
+  EFI_SECTION_TYPE
+  Section_Type
+);
+
+EFI_STATUS LoadFVbyGUID(
+  EFI_HANDLE ImageHandle,
+  CHAR8 *FileName,
+  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  EFI_HANDLE *AppImageHandle,
+  EFI_SECTION_TYPE Section_Type,
+  EFI_SYSTEM_TABLE *SystemTable
+);
+
+EFI_STATUS Exec(
+  EFI_HANDLE *AppImageHandle
+);
