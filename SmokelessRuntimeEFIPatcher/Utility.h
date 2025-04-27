@@ -1,5 +1,6 @@
 #pragma once
 #include <Uefi.h>
+#include <PiDxe.h>
 #include <Guid/FileInfo.h>
 #include <Guid/FileSystemInfo.h>
 #include <Library/DebugLib.h>
@@ -7,8 +8,11 @@
 #include <Library/UefiApplicationEntryPoint.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
-#include <Protocol/BlockIo.h>
+#include <Library/MemoryAllocationLib.h>
+#include <Library/BaseMemoryLib.h>
 #include <Library/PrintLib.h>
+#include <Protocol/FirmwareVolume2.h>
+#include <Protocol/BlockIo.h>
 #include <Protocol/DevicePath.h>
 #include <Protocol/LoadedImage.h>
 #include <Protocol/SimpleFileSystem.h>
@@ -18,11 +22,9 @@
 #include <Protocol/AcpiSystemDescriptionTable.h>
 #include <Protocol/DisplayProtocol.h>
 #include <Protocol/HiiPopup.h>
-#include <Library/MemoryAllocationLib.h>
-#include <PiDxe.h>
-#include <Protocol/FirmwareVolume2.h>
-#include <Library/BaseMemoryLib.h>
-#include <Protocol/RegularExpressionProtocol.h>
+#include <Protocol/ShellParameters.h>             //Needed for GetArgs
+#include <Protocol/RegularExpressionProtocol.h>   //Needed for regex
+#include <Library/HiiLib.h>                       //Needed for fonts
 
 //Needed for ConvertStrToGuid
 #define Align4(Value) (((Value)+3) & ~3)
@@ -80,20 +82,8 @@ EFI_STATUS LocateAndLoadFvFromGuid(
 EFI_STATUS
 RegexMatch(
   IN      UINT8 *DUMP,
-  IN      CHAR16 *Pattern16,
+  IN      CHAR8 *Pattern,
   IN      UINT16 Size,
-  OUT     BOOLEAN *Result
+  IN      EFI_REGULAR_EXPRESSION_PROTOCOL *Oniguruma,
+  OUT     BOOLEAN *CResult
 );
-
-/*
-EFI_STATUS ConvertStrToGuid(
-  IN      CHAR16 *Str,
-  OUT     EFI_GUID *Guid
-);
-
-EFI_STATUS ConvertStrToBuf(
-  OUT     UINT8 *Buf,
-  IN      UINTN  BufferLength,
-  IN      CHAR16 *Str
-);
-*/

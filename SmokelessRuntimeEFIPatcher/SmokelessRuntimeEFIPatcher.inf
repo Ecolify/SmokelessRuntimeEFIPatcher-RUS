@@ -46,6 +46,7 @@
   gEdkiiFormBrowserExProtocolGuid               ## CONSUMES
   gEfiHiiPopupProtocolGuid                      ## CONSUMES
   gEdkiiFormDisplayEngineProtocolGuid           ## CONSUMES
+  gEfiRegularExpressionProtocolGuid             ## CONSUMES
 [Guids]
   gEfiAcpiTableGuid
   gEfiAcpi20TableGuid

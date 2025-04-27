@@ -401,153 +401,46 @@ LocateAndLoadFvFromGuid(EFI_GUID GUID16, EFI_SECTION_TYPE Section_Type, UINT8 **
 EFI_STATUS
 RegexMatch(
   IN      UINT8 *DUMP,
-  IN      CHAR16 *Pattern16,
+  IN      CHAR8 *Pattern,
   IN      UINT16 Size,
-  OUT     BOOLEAN *Result
+  IN      EFI_REGULAR_EXPRESSION_PROTOCOL *Oniguruma,
+  OUT     BOOLEAN *CResult
 )
 {
   EFI_STATUS Status;
-  EFI_REGULAR_EXPRESSION_PROTOCOL Oniguruma;
-  EFI_REGULAR_EXPRESSION_MATCH Match = EFI_SUCCESS;
+
+  CHAR16 tmp[255] = { 0 };
+  CHAR16 DUMP16[255] = { 0 };
+  CHAR16 Pattern16[255] = { 0 };
+  UINTN CapturesCount = 0;  //Reserved for now
+
+  for (UINT16 i = 0; i < Size; i++) //Get string from buffer
+  {
+    UnicodeSPrint(tmp, 512, u"%02x", DUMP[i]);
+    //Print(L"Dump %s\n\r", tmp);
+    Status = StrCatS(DUMP16, sizeof(tmp) + 2, tmp);
+  }
+
+  UnicodeSPrint(Pattern16, sizeof(Pattern16), L"%a", Pattern);  //Convert Pattern string
 
   //Debug
-  CHAR16 *Str = (L"Patt");
-  UINTN *CC = 0;
-
-  /* Not reading dump yet, testing
-  for (UINT16 i = 0; i < Size; i++) {
-    UnicodeSPrint(Str, 512, u"%02x ", DUMP[i]);
-  }
+  /*
+  Print(L"Append result: %r\n\r", Status);
+  Print(L"Strings Dump/Pattern %s / %s\n\r", &DUMP16, &Pattern16);
+  INTN m = StrCmp(DUMP16, Pattern16);
+  Print(L"Strings match? : %d\n\r", m); //0 is yes, any other means they dont
+  Print(L"DUMP16 : %d Pattern16 : %d\n\r", StrLen(DUMP16), StrLen(Pattern16));
   */
 
-  Status = Match(&Oniguruma, Str, Pattern16, NULL, Result, NULL, CC);
+  Status = Oniguruma->MatchString(
+    Oniguruma,
+    DUMP16,
+    Pattern16,
+    NULL,
+    CResult,
+    NULL,
+    &CapturesCount
+  );
 
-  if (Result || Status == EFI_SUCCESS) { Print(L"Regex worked -> %s\n\r", &Pattern16); return Status; };
   return Status;
 }
-
-/*
-EFI_STATUS
-ConvertStrToBuf(
-  OUT     UINT8 *Buf,
-  IN      UINTN  BufferLength,
-  IN      CHAR16 *Str
-)
-{
-  UINTN       Index;
-  UINTN       StrLength;
-  UINT8       Digit;
-  UINT8       Byte;
-
-  Digit = 0;
-
-  //
-  // Two hex char make up one byte
-  //
-  StrLength = BufferLength * sizeof(CHAR16);
-
-  for (Index = 0; Index < StrLength; Index++, Str++) {
-
-    if ((*Str >= L'a') && (*Str <= L'f')) {
-      Digit = (UINT8)(*Str - L'a' + 0x0A);
-    }
-    else if ((*Str >= L'A') && (*Str <= L'F')) {
-      Digit = (UINT8)(*Str - L'A' + 0x0A);
-    }
-    else if ((*Str >= L'0') && (*Str <= L'9')) {
-      Digit = (UINT8)(*Str - L'0');
-    }
-    else {
-      return EFI_INVALID_PARAMETER;
-    }
-
-    //
-    // For odd characters, write the upper nibble for each buffer byte,
-    // and for even characters, the lower nibble.
-    //
-    if ((Index & 1) == 0) {
-      Byte = (UINT8)(Digit << 4);
-    }
-    else {
-      Byte = Buf[Index / 2];
-      Byte &= 0xF0;
-      Byte = (UINT8)(Byte | Digit);
-    }
-
-    Buf[Index / 2] = Byte;
-  }
-
-  return EFI_SUCCESS;
-}
-
-EFI_STATUS
-ConvertStrToGuid(
-  IN      CHAR16 *Str,
-  OUT     EFI_GUID *Guid
-)
-{
-  //
-  // Get the first UINT32 data
-  //
-  Guid->Data1 = (UINT32)StrHexToUint64(Str);
-  while (!IS_HYPHEN(*Str) && !IS_NULL(*Str)) {
-    Str++;
-  }
-
-  if (IS_HYPHEN(*Str)) {
-    Str++;
-  }
-  else {
-    return EFI_UNSUPPORTED;
-  }
-
-  //
-  // Get the second UINT16 data
-  //
-  Guid->Data2 = (UINT16)StrHexToUint64(Str);
-  while (!IS_HYPHEN(*Str) && !IS_NULL(*Str)) {
-    Str++;
-  }
-
-  if (IS_HYPHEN(*Str)) {
-    Str++;
-  }
-  else {
-    return EFI_UNSUPPORTED;
-  }
-
-  //
-  // Get the third UINT16 data
-  //
-  Guid->Data3 = (UINT16)StrHexToUint64(Str);
-  while (!IS_HYPHEN(*Str) && !IS_NULL(*Str)) {
-    Str++;
-  }
-
-  if (IS_HYPHEN(*Str)) {
-    Str++;
-  }
-  else {
-    return EFI_UNSUPPORTED;
-  }
-
-  //
-  // Get the following 8 bytes data
-  //
-  ConvertStrToBuf(&Guid->Data4[0], 2, Str);
-  //
-  // Skip 2 byte hex chars
-  //
-  Str += 2 * 2;
-
-  if (IS_HYPHEN(*Str)) {
-    Str++;
-  }
-  else {
-    return EFI_UNSUPPORTED;
-  }
-  ConvertStrToBuf(&Guid->Data4[2], 6, Str);
-
-  return EFI_SUCCESS;
-}
-*/

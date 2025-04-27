@@ -59,10 +59,10 @@ EFI_STATUS FindLoadedImageFromGUID(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_
         else { Print(L"Всего найдено дескрипторов: %d\n\r", HandleSize); }
     }
 
-    if (Section_Type == EFI_SECTION_FREEFORM_SUBTYPE_GUID) {
+    if (Section_Type == EFI_SECTION_TE) {
       if (BufferSize != 0) {
-        if (ENG == TRUE) { Print(L"Although the section with size: %d was found in BIOS,\nSREP may not be able to find Freeform in RAM\n", BufferSize); }
-        else { Print(L"Хотя в БИОС нашлась секция с размером: %d,\nSREP может быть не способен найти Freeform в RAM\n", BufferSize); }
+        if (ENG == TRUE) { Print(L"Although the section with size: %d was found in BIOS,\nSREP may not be able to find TE in RAM\n", BufferSize); }
+        else { Print(L"Хотя в БИОС нашлась секция с размером: %d,\nSREP может быть не способен найти TE в RAM\n", BufferSize); }
       }
     }
 

@@ -1,33 +1,9 @@
-﻿#include <Uefi.h>
-#include <Guid/FileInfo.h>
-#include <Guid/FileSystemInfo.h>
-#include <Library/DebugLib.h>
-#include <Library/DevicePathLib.h>
-#include <Library/UefiApplicationEntryPoint.h>
-#include <Library/UefiBootServicesTableLib.h>
-#include <Library/UefiLib.h>
-#include <Library/PrintLib.h>
-#include <Protocol/BlockIo.h>
-#include <Protocol/DevicePath.h>
-#include <Protocol/LoadedImage.h>
-#include <Protocol/SimpleFileSystem.h>
-#include <Protocol/FormBrowser2.h>
-#include <Protocol/FormBrowserEx.h>
-#include <Protocol/FormBrowserEx2.h>
-#include <Protocol/AcpiSystemDescriptionTable.h>
-#include <Protocol/DisplayProtocol.h>
-#include <Protocol/HiiPopup.h>
-#include <Library/HiiLib.h>                       //Needed for fonts
-#include <Library/MemoryAllocationLib.h>
-#include <Library/BaseMemoryLib.h>
-#include <Protocol/ShellParameters.h>             //Needed for GetArgs
-
-//Include sources
+﻿//Include sources
 #include "Utility.h"
 #include "Opcode.h"
 
 //Specify app version
-#define SREP_VERSION L"0.1.5 RUS"
+#define SREP_VERSION L"0.1.6rc1 RUS"
 
 //Get font data having external linkage
 extern EFI_WIDE_GLYPH gSimpleFontWideGlyphData[];
@@ -55,7 +31,7 @@ enum OPCODE
     NO_OP,
     LOADED,
     LOADED_GUID_PE,
-    LOADED_GUID_FREEFORM,
+    LOADED_GUID_TE,
     LOAD_FS,
     LOAD_FV,
     LOAD_GUID,
@@ -67,20 +43,22 @@ enum OPCODE
 struct OP_DATA
 {
     enum OPCODE ID;               //Loaded, LoadFromFV, LoadFromFS and etc. See the corresp. OPCODE.
-    CHAR8 *Name;                  //<Driver name>, argument for the OPCODE.
+    CHAR8 *Name;                  //<FileName>, argument for the OPCODE.
     BOOLEAN Name_Dyn_Alloc;
-    UINT64 PatchType;
+    UINT64 PatchType;             //Pattern, Offset, Rel...
     BOOLEAN PatchType_Dyn_Alloc;
-    INT64 ARG3;
+    INT64 ARG3;                   //Offset
     BOOLEAN ARG3_Dyn_Alloc;
-    UINT64 ARG4;
+    UINT64 ARG4;                  //Patch length
     BOOLEAN ARG4_Dyn_Alloc;
-    UINT64 ARG5;
+    UINT64 ARG5;                  //Patch buffer
     BOOLEAN ARG5_Dyn_Alloc;
-    UINT64 ARG6;
+    UINT64 ARG6;                  //Pattern length
     BOOLEAN ARG6_Dyn_Alloc;
-    UINT64 ARG7;
+    UINT64 ARG7;                  //Pattern to search for
     BOOLEAN ARG7_Dyn_Alloc;
+    CHAR8 *Regex;
+    BOOLEAN Regex_Dyn_Alloc;
     struct OP_DATA *next;
     struct OP_DATA *prev;
 };
@@ -93,7 +71,7 @@ typedef struct {
   UINTN PixelsPerScanLine;
 } FRAME_BUFFER;
 
-//C2220 suppression due log filename issues
+//C2220 suppression due to log filename issues
 #pragma warning(disable:4459)
 #pragma warning(disable:4456)
 #pragma warning(disable:4244)
@@ -107,7 +85,7 @@ VOID LogToFile( EFI_FILE *LogFile, CHAR16 *String)
 }
 
 //Collect OPCODEs from cfg
-VOID Add_OP_CODE(struct OP_DATA *Start, struct OP_DATA *opCode)
+static VOID Add_OP_CODE(struct OP_DATA *Start, struct OP_DATA *opCode)
 {
     struct OP_DATA *next = Start;
     while (next->next != NULL)
@@ -119,7 +97,7 @@ VOID Add_OP_CODE(struct OP_DATA *Start, struct OP_DATA *opCode)
 }
 
 //Detect OPCODEs in read buffer and dispatch immediatelly. Currently unused
-VOID PrintOPChain(struct OP_DATA *Start)
+static VOID PrintOPChain(struct OP_DATA *Start)
 {
     struct OP_DATA *next = Start;
     while (next != NULL)
@@ -140,8 +118,8 @@ VOID PrintOPChain(struct OP_DATA *Start)
             UnicodeSPrint(Log,512,u"%a","LOADED_GUID_PE\n\r");
             LogToFile(LogFile,Log);
             break;
-        case LOADED_GUID_FREEFORM:
-            UnicodeSPrint(Log,512,u"%a","LOADED_GUID_FREEFORM\n\r");
+        case LOADED_GUID_TE:
+            UnicodeSPrint(Log,512,u"%a","LOADED_GUID_TE\n\r");
             LogToFile(LogFile,Log);
             break;
         case LOAD_FS:
@@ -179,7 +157,7 @@ VOID PrintOPChain(struct OP_DATA *Start)
 }
 
 //Prints those 16 symbols wide dumps
-VOID PrintDump(UINT16 Size, UINT8 *DUMP)
+static VOID PrintDump(UINT16 Size, UINT8 *DUMP)
 {
     for (UINT16 i = 0; i < Size; i++)
     {
@@ -188,7 +166,7 @@ VOID PrintDump(UINT16 Size, UINT8 *DUMP)
             UnicodeSPrint(Log,512,u"%a","\n\t");
             LogToFile(LogFile,Log);
         }
-        UnicodeSPrint(Log,512,u"%02x ", DUMP[i]);
+        UnicodeSPrint(Log,512,u"%02x", DUMP[i]);
         LogToFile(LogFile,Log);
     }
     UnicodeSPrint(Log,512,u"%a","\n\t");
@@ -196,9 +174,9 @@ VOID PrintDump(UINT16 Size, UINT8 *DUMP)
 }
 
 //Simple font support function
-UINT8 *CreateSimpleFontPkg(EFI_WIDE_GLYPH* WideGlyph,
+static UINT8 *CreateSimpleFontPkg(EFI_WIDE_GLYPH *WideGlyph,
   UINT32 WideGlyphSizeInBytes,
-  EFI_NARROW_GLYPH* NarrowGlyph,
+  EFI_NARROW_GLYPH *NarrowGlyph,
   UINT32 NarrowGlyphSizeInBytes)
 {
   UINT32 PackageLen = sizeof(EFI_HII_SIMPLE_FONT_PACKAGE_HDR) + WideGlyphSizeInBytes + NarrowGlyphSizeInBytes + 4;
@@ -229,7 +207,7 @@ EFI_STATUS EFIAPI SREPEntry(
   //For the font
   //
   EFI_GUID gHIIRussianFontGuid;
-  UINT8* FontPackage = CreateSimpleFontPkg(gSimpleFontWideGlyphData,
+  UINT8 *FontPackage = CreateSimpleFontPkg(gSimpleFontWideGlyphData,
                                           gSimpleFontWideBytes,
                                           gSimpleFontNarrowGlyphData,
                                           gSimpleFontNarrowBytes);
@@ -249,13 +227,81 @@ EFI_STATUS EFIAPI SREPEntry(
   /*-----------------------------------------------------------------------------------*/
 
     EFI_STATUS Status;
+    EFI_HANDLE AppImageHandle;
     EFI_HANDLE_PROTOCOL HandleProtocol;
-    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *FileSystem;
-    EFI_FILE *Root;
+    EFI_LOADED_IMAGE_PROTOCOL *ImageInfo;
     EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
     EFI_SHELL_PARAMETERS_PROTOCOL *ShellParameters;
+    EFI_REGULAR_EXPRESSION_PROTOCOL *RegularExpressionProtocol;
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *FileSystem;
+    EFI_FILE *Root;
     EFI_FILE *ConfigFile;
     CHAR16 FileName[255];
+
+    /*-----------------------------------------------------------------------------------*/
+    //
+    //For Regex
+    //
+    EFI_HANDLE *HandleBuffer;
+    HandleBuffer = NULL;
+    UINTN BufferSize = 0;
+
+    LoadandRunImage(ImageHandle, SystemTable, L"Oniguruma.efi", &AppImageHandle); //Produce RegularExpressionProtocol
+
+    Status = gBS->LocateHandle(
+      ByProtocol,
+      &gEfiRegularExpressionProtocolGuid,
+      NULL,
+      &BufferSize,
+      HandleBuffer
+    );
+
+    //Catch not enough memory there, print Status from LocateHandle
+    //Print(L"Point 1 - %r\n\r", Status);
+    if (Status == EFI_BUFFER_TOO_SMALL) {
+      HandleBuffer = AllocateZeroPool(BufferSize);
+      if (HandleBuffer == NULL) {
+        Status = EFI_OUT_OF_RESOURCES;
+        //Print(L"Point 2 - %r\n\r", Status);
+        return Status;
+      }
+    };
+    if (Status == EFI_NOT_FOUND)
+    {
+      if (ENG == TRUE) {
+        Print(L"Failed on Locating RegularExpressionProtocol: %r\n\r", Status);
+        UnicodeSPrint(Log, 512, L"Failed on Locating RegularExpressionProtocol: %r\n\r", Status);
+        LogToFile(LogFile, Log);
+      }
+      else
+      {
+        Print(L"Зависимости не найдены: RegularExpressionProtocol\n");
+        Print(L"Убедитесь что файл Oniguruma.efi доступен\n\r");
+        UnicodeSPrint(Log, 512, u"Не хватает зависимостей, причина: %r\n", Status);
+        LogToFile(LogFile, Log);
+      }
+      gBS->Stall(3000000);
+      return Status;
+    }
+    //Try again after allocation
+    Status = gBS->LocateHandle(
+      ByProtocol,
+      &gEfiRegularExpressionProtocolGuid,
+      NULL,
+      &BufferSize,
+      HandleBuffer
+    );
+
+    for (UINTN Index = 0; Index < BufferSize / sizeof(EFI_HANDLE); Index++) {
+      Status = gBS->HandleProtocol(
+        HandleBuffer[Index],
+        &gEfiRegularExpressionProtocolGuid,
+        (VOID**)&RegularExpressionProtocol
+      );
+    }
+
+    //Print(L"Point 3 - %r\n\r", Status);
+  /*-----------------------------------------------------------------------------------*/
 
   //Setup the program depending on the presence of arguments
   Status = gBS->HandleProtocol(
@@ -282,7 +328,7 @@ EFI_STATUS EFIAPI SREPEntry(
     
     //Print(L"ShellParameters init status: %r\n\r", Status); //Shell Debug
 
-    gBS->SetWatchdogTimer(0, 0, 0, 0);//Disable watchdog so the system doesn't reboot on timer
+    gBS->SetWatchdogTimer(0, 0, 0, 0);  //Disable watchdog so the system doesn't reboot by timer
 
     HandleProtocol = SystemTable->BootServices->HandleProtocol;
     HandleProtocol(ImageHandle, &gEfiLoadedImageProtocolGuid, (void **)&LoadedImage);
@@ -307,6 +353,7 @@ EFI_STATUS EFIAPI SREPEntry(
           UnicodeSPrint(Log, 512, u"Убедитесь что накопитель в формате FAT\n\r");
           LogToFile(LogFile, Log);
         }
+        gBS->Stall(3000000);
         return Status;
     }
 
@@ -335,6 +382,7 @@ EFI_STATUS EFIAPI SREPEntry(
           UnicodeSPrint(Log, 512, u"Не удалось открыть конфиг, причина: %r\n\r", Status);
           LogToFile(LogFile, Log);
         }
+        gBS->Stall(3000000);
         return Status;
     }
    if (ENG == TRUE) {
@@ -370,6 +418,7 @@ EFI_STATUS EFIAPI SREPEntry(
               UnicodeSPrint(Log, 512, u"Не удалось получить данные о файле, причина: %r\n\r", Status);
               LogToFile(LogFile, Log);
             }
+            gBS->Stall(3000000);
             return Status;
         }
     }
@@ -401,6 +450,7 @@ EFI_STATUS EFIAPI SREPEntry(
           UnicodeSPrint(Log, 512, u"Не удалось прочитать конфиг, причина: %r\n\r", Status);
           LogToFile(LogFile, Log);
         }
+        gBS->Stall(3000000);
         return Status;
     }
     if (ENG == TRUE) {
@@ -427,7 +477,7 @@ EFI_STATUS EFIAPI SREPEntry(
     }
     UINTN curr_pos = 0;
 
-    //Read config data and dispatch
+    //Read config data, and dispatch
     struct OP_DATA *Start = AllocateZeroPool(sizeof(struct OP_DATA));
     struct OP_DATA *Prev_OP;
     Start->ID = NO_OP;
@@ -453,7 +503,7 @@ EFI_STATUS EFIAPI SREPEntry(
         }
         else
         {
-          Print(L"В данный момент обрабатываем строку % a\n\r", &ConfigData[curr_pos]);
+          Print(L"В данный момент обрабатываем строку %a\n\r", &ConfigData[curr_pos]);
           UnicodeSPrint(Log, 512, u"В данный момент обрабатываем строку %a\n\r", &ConfigData[curr_pos]);
           LogToFile(LogFile, Log);
         }
@@ -489,7 +539,7 @@ EFI_STATUS EFIAPI SREPEntry(
             }
             else
             {
-              UnicodeSPrint(Log, 512, u"Комманда %a\n\r", &ConfigData[curr_pos]);
+              UnicodeSPrint(Log, 512, u"Команда %a\n\r", &ConfigData[curr_pos]);
               LogToFile(LogFile, Log);
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "LoadFromFS"))
@@ -527,10 +577,10 @@ EFI_STATUS EFIAPI SREPEntry(
                 Add_OP_CODE(Start, Prev_OP);
                 continue;
             }
-            if (AsciiStrStr(&ConfigData[curr_pos], "NonameFREEFORM"))
+            if (AsciiStrStr(&ConfigData[curr_pos], "NonameTE"))
             {
                 Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-                Prev_OP->ID = LOADED_GUID_FREEFORM;
+                Prev_OP->ID = LOADED_GUID_TE;
                 Add_OP_CODE(Start, Prev_OP);
                 continue;
             }
@@ -562,7 +612,7 @@ EFI_STATUS EFIAPI SREPEntry(
             }
             return EFI_INVALID_PARAMETER;
         }
-        if ((Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID || Prev_OP->ID == LOADED || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_FREEFORM) && Prev_OP->Name == 0)
+        if ((Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID || Prev_OP->ID == LOADED || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE) && Prev_OP->Name == 0)
         {
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"Found File %a\n\r", &ConfigData[curr_pos]);
@@ -639,7 +689,7 @@ EFI_STATUS EFIAPI SREPEntry(
 
         //This is the new itereration, we are just in from the Pattern OPCODE
         //Check which arguments are present, remember to patch the location by OFFSET
-        //ARG3 is Offset?, ARG6 is Patch Length, ARG7 is Patch Buffer
+        //ARG3 is Offset, ARG6 is Pattern Length, ARG7 is Pattern Buffer, Regex is raw pattern string
         if (Prev_OP->ID == PATCH && Prev_OP->PatchType != 0 && Prev_OP->ARG3 == 0)
         {
             if (Prev_OP->PatchType == OFFSET || Prev_OP->PatchType == REL_NEG_OFFSET || Prev_OP->PatchType == REL_POS_OFFSET) //Patch by offset
@@ -668,14 +718,23 @@ EFI_STATUS EFIAPI SREPEntry(
                   UnicodeSPrint(Log, 512, u"Найдено %d байт\n\r", Prev_OP->ARG6);
                   LogToFile(LogFile, Log);
                 }
+                
+                UINTN RegexLength = AsciiStrLen(&ConfigData[curr_pos]) + 1;
+                CHAR8 *Regex = AllocateZeroPool(RegexLength);
+                CopyMem(Regex, &ConfigData[curr_pos], RegexLength);
+                Prev_OP->Regex = Regex;
+                Prev_OP->Regex_Dyn_Alloc = TRUE;
+
+                //Old imp, no regex 
                 Prev_OP->ARG7 = (UINT64)AllocateZeroPool(Prev_OP->ARG6);
                 AsciiStrHexToBytes(&ConfigData[curr_pos], Prev_OP->ARG6 * 2, (UINT8 *)Prev_OP->ARG7, Prev_OP->ARG6);
+                //
             }
             continue;
         }
 
         //Check which arguments are present, remember to patch the location by PATTERN
-        //ARG4 is Pattern Length, ARG5 is Pattern Buffer
+        //ARG4 is Patch Length, ARG5 is Patch Buffer
         if (Prev_OP->ID == PATCH && Prev_OP->PatchType != 0 && Prev_OP->ARG3 != 0)
         {
 
@@ -704,6 +763,8 @@ EFI_STATUS EFIAPI SREPEntry(
               LogToFile(LogFile, Log);
             }
             PrintDump(Prev_OP->ARG4, (UINT8 *)Prev_OP->ARG5);
+            UnicodeSPrint(Log, 512, u"\n\r");
+            LogToFile(LogFile, Log);
             continue;
         }
     }
@@ -717,8 +778,6 @@ EFI_STATUS EFIAPI SREPEntry(
 
     //The actual execution
     struct OP_DATA *next;
-    EFI_HANDLE AppImageHandle;
-    EFI_LOADED_IMAGE_PROTOCOL *ImageInfo;
     INT64 BaseOffset;
 
     for (next = Start; next != NULL; next = next->next)
@@ -774,18 +833,18 @@ EFI_STATUS EFIAPI SREPEntry(
               LogToFile(LogFile, Log);
             }
             break;
-        case LOADED_GUID_FREEFORM:
+        case LOADED_GUID_TE:
             if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing NonameFREEFORM\n\r");
+              UnicodeSPrint(Log, 512, u"%a", "Executing NonameTE\n\r");
               LogToFile(LogFile, Log);
             }
             else
             {
-              Print(L"Выполняется аргумент NonameFREEFORM\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент NonameFREEFORM\n\r");
+              Print(L"Выполняется аргумент NonameTE\n\r");
+              UnicodeSPrint(Log, 512, u"Выполняется аргумент NonameTE\n\r");
               LogToFile(LogFile, Log);
             }
-            Status = FindLoadedImageFromGUID(ImageHandle, next->Name, &ImageInfo, EFI_SECTION_FREEFORM_SUBTYPE_GUID);
+            Status = FindLoadedImageFromGUID(ImageHandle, next->Name, &ImageInfo, EFI_SECTION_TE);
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"Loaded Image %r -> %x\n\r", Status, ImageInfo->ImageBase);
               LogToFile(LogFile, Log);
@@ -897,9 +956,7 @@ EFI_STATUS EFIAPI SREPEntry(
               UnicodeSPrint(Log, 512, u"Размер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
             }
-            PrintDump(next->ARG6, (UINT8 *)next->ARG7);
 
-            // PrintDump(next->ARG6, (UINT8 *)ImageInfo->ImageBase);    // The cause of my edit: winraid.level1techs.com/t/89351/6
             // PrintDump(0x200, (UINT8 *)(LoadedImage->ImageBase));     // A leftover from Smokeless
             if (next->PatchType == PATTERN)
             {
@@ -913,26 +970,38 @@ EFI_STATUS EFIAPI SREPEntry(
                   UnicodeSPrint(Log, 512, u"Поиск шаблона\n\r");
                   LogToFile(LogFile, Log);
                 }
+                Print(L"\n%a\n\n\r", (CHAR8 *)next->Regex); //PrintDump ascii
+
+                BOOLEAN CResult = FALSE; // Comparison Result
+
                 for (UINTN i = 0; i < ImageInfo->ImageSize - next->ARG6; i += 1)
                 {
-                  /*  Oniguruma test match
-                  BOOLEAN CResult = FALSE;
-                  RegexMatch(((UINT8*)ImageInfo->ImageBase) + i, (CHAR16*)"Patt", (UINT16)4, &CResult);
-                  if (CResult) { Print(L"Got answer from Utility\n\r"); };
-                  */
-                    if (CompareMem(((UINT8 *)ImageInfo->ImageBase) + i, (UINT8 *)next->ARG7, next->ARG6) == 0)
+                  //Old imp, no regex
+                  CompareMem(((UINT8 *)ImageInfo->ImageBase), (UINT8 *)next->ARG7, next->ARG6);
+
+                  //Regex match
+                  RegexMatch(((UINT8 *)ImageInfo->ImageBase) + i, (CHAR8 *)next->Regex, (UINT8)next->ARG6, RegularExpressionProtocol, &CResult);
+                  if (CResult != FALSE)
+                  {
+                    if (ENG == TRUE) {
+                      Print(L"Regex: %a\n\r", CResult ? "Worked" : "Failed");
+                      UnicodeSPrint(Log, 512, u"Regex: %a\n\r", CResult ? "Worked" : "Failed");
+                      LogToFile(LogFile, Log);
+                      UnicodeSPrint(Log, 512, u"\rFound\n\r");
+                      LogToFile(LogFile, Log);
+                    }
+                    else
                     {
-                        next->ARG3 = i; //Offset
-                        if (ENG == TRUE) {
-                          UnicodeSPrint(Log, 512, u"Found\n\r");
-                          LogToFile(LogFile, Log);
-                        }
-                        else
-                        {
-                          Print(L"Найден\n\r");
-                          UnicodeSPrint(Log, 512, u"Найден\n\r");
-                          LogToFile(LogFile, Log);
-                        }
+                      Print(L"РегВыр: %a\n\r", CResult ? "Worked" : "Failed");
+                      UnicodeSPrint(Log, 512, u"РегВыр: %a\n\r", CResult ? "Worked" : "Failed");
+                      LogToFile(LogFile, Log);
+                      Print(L"Место выбрано\n\r");
+                      UnicodeSPrint(Log, 512, u"\rМесто выбрано\n\r");
+                      LogToFile(LogFile, Log);
+                    }
+
+                        next->ARG3 = i; //Save offset to ARG3
+                        PrintDump(next->ARG6, (UINT8 *)ImageInfo->ImageBase + next->ARG3);  //The cause of my edit: winraid.level1techs.com/t/89351/6
                         break;
                     }
                 }
@@ -1030,6 +1099,8 @@ EFI_STATUS EFIAPI SREPEntry(
             FreePool((VOID *)next->ARG6);
         if (next->ARG7_Dyn_Alloc)
             FreePool((VOID *)next->ARG7);
+        if (next->Regex_Dyn_Alloc)
+            FreePool((VOID *)next->Regex);
     }
     next = Start;
     while (next->next != NULL)
