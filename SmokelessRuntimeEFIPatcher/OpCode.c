@@ -166,7 +166,7 @@ EFI_STATUS LoadFV(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROT
                             AppImageHandle);
     if (Buffer != NULL)
         FreePool(Buffer);
-    if (Status == EFI_SUCCESS)
+    if (Status != EFI_SUCCESS)
     {
         if (ENG == TRUE) { Print(L"Could not Locate the image from FV %r\n", Status); }
         else { Print(L"Не удалось загрузить драйвер из FV\n"); }
