@@ -268,12 +268,10 @@ EFI_STATUS EFIAPI SREPEntry(
     );
 
     //Catch not enough memory there, print Status from LocateHandle
-    //Print(L"Point 1 - %r\n\r", Status);
     if (Status == EFI_BUFFER_TOO_SMALL) {
       HandleBuffer = AllocateZeroPool(BufferSize);
       if (HandleBuffer == NULL) {
         Status = EFI_OUT_OF_RESOURCES;
-        //Print(L"Point 2 - %r\n\r", Status);
         return Status;
       }
     };
@@ -286,8 +284,7 @@ EFI_STATUS EFIAPI SREPEntry(
       }
       else
       {
-        Print(L"Зависимости не найдены: RegularExpressionProtocol\n");
-        Print(L"Убедитесь что файл Oniguruma.efi доступен\n\r");
+        Print(L"Зависимости не найдены: RegularExpressionProtocol\nУбедитесь что файл Oniguruma.efi доступен\n\r");
         UnicodeSPrint(Log, 512, u"Не хватает зависимостей, причина: %r\n", Status);
         LogToFile(LogFile, Log);
       }
@@ -359,11 +356,8 @@ EFI_STATUS EFIAPI SREPEntry(
         }
         else
         {
-          Print(L"Не удалось подготовить логирование, причина: %r,\n", Status);
-          Print(L"Убедитесь что накопитель в формате FAT\n\r");
-          UnicodeSPrint(Log, 512, u"Не удалось подготовить логирование: %r\n", Status);
-          LogToFile(LogFile, Log);
-          UnicodeSPrint(Log, 512, u"Убедитесь что накопитель в формате FAT\n\r");
+          Print(L"Не удалось подготовить логирование, причина: %r,\nУбедитесь что накопитель в формате FAT\n\r", Status);
+          UnicodeSPrint(Log, 512, u"Не удалось подготовить логирование: %r\nУбедитесь что накопитель в формате FAT\n\r", Status);
           LogToFile(LogFile, Log);
         }
         gBS->Stall(3000000);
@@ -719,7 +713,7 @@ EFI_STATUS EFIAPI SREPEntry(
         }
 
         //This is the new itereration, we are just in from the Pattern OPCODE
-        //Check which arguments are present, remember to patch the location by OFFSET
+        //Check which arguments are present, save curr_pos data
         //ARG3 is Offset, ARG6 is Pattern Length, ARG7 is Pattern Buffer, Regex is raw pattern string
         if ((Prev_OP->ID == PATCH_FAST || Prev_OP->ID == PATCH) && Prev_OP->PatchType != 0 && Prev_OP->ARG3 == 0)
         {
@@ -764,7 +758,7 @@ EFI_STATUS EFIAPI SREPEntry(
             continue;
         }
 
-        //Check which arguments are present, remember to patch the location by PATTERN
+        //Check which arguments are present, save curr_pos data
         //ARG4 is Patch Length, ARG5 is Patch Buffer
         if ((Prev_OP->ID == PATCH_FAST || Prev_OP->ID == PATCH) && Prev_OP->PatchType != 0 && Prev_OP->ARG3 != 0)
         {
@@ -1003,18 +997,13 @@ EFI_STATUS EFIAPI SREPEntry(
           }
           if (!isDBThere) {
             if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing Fast Patch\n\r");
-              LogToFile(LogFile, Log);
-              UnicodeSPrint(Log, 512, u"Patching Image Size %x:\n\r", ImageInfo->ImageSize);
+              UnicodeSPrint(Log, 512, u"%a", "Executing Fast Patch\n\rPatching Image Size %x:\n\r", ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
             }
             else
             {
-              Print(L"Выполняется аргумент Fast Patch\n\r");
-              Print(L"Размер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент Fast Patch\n\r");
-              LogToFile(LogFile, Log);
-              UnicodeSPrint(Log, 512, u"Размер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
+              Print(L"Выполняется аргумент Fast Patch\n\rРазмер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
+              UnicodeSPrint(Log, 512, u"Выполняется аргумент Fast Patch\n\rРазмер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
             }
           }
@@ -1106,7 +1095,7 @@ EFI_STATUS EFIAPI SREPEntry(
             
             if (next->ARG3 != 0) {
               if (ENG == TRUE) {
-                Print(L"\nNot patched\n\r");
+                Print(L"Patched\n\r");
                 UnicodeSPrint(Log, 512, u"%a", "\nPatched\n\r");
                 LogToFile(LogFile, Log);
               }
@@ -1128,6 +1117,7 @@ EFI_STATUS EFIAPI SREPEntry(
             else
             {
               if (ENG == TRUE) {
+                Print(L"Not patched\n\r");
                 UnicodeSPrint(Log, 512, u"%a", "\nNot patched\n\r");
                 LogToFile(LogFile, Log);
               }
@@ -1141,18 +1131,13 @@ EFI_STATUS EFIAPI SREPEntry(
             break;
         case PATCH:
             if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing Patch\n\r");
-              LogToFile(LogFile, Log);
-              UnicodeSPrint(Log, 512, u"Patching Image Size %x:\n\r", ImageInfo->ImageSize);
+              UnicodeSPrint(Log, 512, u"%a", "Executing Patch\n\rPatching Image Size %x:\n\r", ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
             }
             else
             {
-              Print(L"Выполняется аргумент Patch\n\r");
-              Print(L"Размер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент Patch\n\r");
-              LogToFile(LogFile, Log);
-              UnicodeSPrint(Log, 512, u"Размер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
+              Print(L"Выполняется аргумент Patch\n\rРазмер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
+              UnicodeSPrint(Log, 512, u"Выполняется аргумент Patch\n\rРазмер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
             }
 
@@ -1193,21 +1178,19 @@ EFI_STATUS EFIAPI SREPEntry(
                   if (CResult != FALSE && Status == EFI_SUCCESS)
                   {
                     if (ENG == TRUE) {
-                      Print(L"Found\n\r");
+                      Print(L"Found\n\rPlease, standby...\n\r");
                       UnicodeSPrint(Log, 512, u"^ Search string ^\n\r");
                       LogToFile(LogFile, Log);
                       UnicodeSPrint(Log, 512, u"\rFound patterns:\n\r");
                       LogToFile(LogFile, Log);
-                      Print(L"Please, standby...\n\r");
                     }
                     else
                     {
-                      Print(L"Найдено\n\r");
+                      Print(L"Найдено\n\rЖдите...\n\r");
                       UnicodeSPrint(Log, 512, u"^ Поиск строки ^\n\r");
                       LogToFile(LogFile, Log);
                       UnicodeSPrint(Log, 512, u"\rНайденные места:\n\r");
                       LogToFile(LogFile, Log);
-                      Print(L"Ждите...\n\r");
                     }
                     next->ARG3 = i;
                   }
@@ -1243,7 +1226,8 @@ EFI_STATUS EFIAPI SREPEntry(
                 if (next->ARG3 == 0xFFFFFFFF) //Stopped near overflow
                 {
                     if (ENG == TRUE) {
-                      UnicodeSPrint(Log, 512, u"%a", "No Pattern Found\n\r");
+                      Print(L"Pattern not found\n\r");
+                      UnicodeSPrint(Log, 512, u"%a", "Pattern not found\n\r");
                       LogToFile(LogFile, Log);
                     }
                     else
@@ -1289,6 +1273,7 @@ EFI_STATUS EFIAPI SREPEntry(
 
             if (next->ARG3 != 0) {
               if (ENG == TRUE) {
+                Print(L"Patched\n\r");
                 UnicodeSPrint(Log, 512, u"%a", "\nPatched\n\r");
                 LogToFile(LogFile, Log);
               }
@@ -1303,13 +1288,13 @@ EFI_STATUS EFIAPI SREPEntry(
             {
               if (ENG == TRUE) {
                 Print(L"Not patched\n\n\r");
-                UnicodeSPrint(Log, 512, u"%a", "Not patched\n\n\r");
+                UnicodeSPrint(Log, 512, u"%a", "\nNot patched\n\n\r");
                 LogToFile(LogFile, Log);
               }
               else
               {
                 Print(L"Патч провалился\n\n\r");
-                UnicodeSPrint(Log, 512, u"Патч провалился\n\n\r");
+                UnicodeSPrint(Log, 512, u"\nПатч провалился\n\n\r");
                 LogToFile(LogFile, Log);
               }
               // Patch first found instance only
