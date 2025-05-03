@@ -25,17 +25,7 @@
 #include <Protocol/ShellParameters.h>             //Needed for GetArgs
 #include <Protocol/RegularExpressionProtocol.h>   //Needed for regex
 #include <Library/HiiLib.h>                       //Needed for fonts
-
-//Needed for ConvertStrToGuid
-#define Align4(Value) (((Value)+3) & ~3)
-#define Align8(Value) (((Value)+7) & ~7)
-#define IS_COMMA(a)                ((a) == L',')
-#define IS_HYPHEN(a)               ((a) == L'-')
-#define IS_DOT(a)                  ((a) == L'.')
-#define IS_LEFT_PARENTH(a)         ((a) == L'(')
-#define IS_RIGHT_PARENTH(a)        ((a) == L')')
-#define IS_SLASH(a)                ((a) == L'/')
-#define IS_NULL(a)                 ((a) == L'\0')
+#include <Library/UefiRuntimeServicesTableLib.h>  //Needed for gRT
 
 //Set default lang Rus
 BOOLEAN ENG = FALSE;

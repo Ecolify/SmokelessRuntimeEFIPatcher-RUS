@@ -101,9 +101,7 @@ EFI_STATUS LoadFS(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROT
     EFI_STATUS Status = EFI_SUCCESS;
     EFI_BLOCK_IO_PROTOCOL *BlkIo;
     EFI_DEVICE_PATH_PROTOCOL *FilePath;
-    Status =
-        gBS->LocateHandleBuffer(ByProtocol, &gEfiSimpleFileSystemProtocolGuid,
-                                NULL, &NumHandles, &SFS_Handles);
+    Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiSimpleFileSystemProtocolGuid, NULL, &NumHandles, &SFS_Handles);
 
     if (Status != EFI_SUCCESS)
     {
@@ -162,8 +160,7 @@ EFI_STATUS LoadFV(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROT
     UINTN BufferSize = 0;
     Status = LocateAndLoadFvFromName(FileName16, Section_Type, &Buffer, &BufferSize);
 
-    Status = gBS->LoadImage(FALSE, ImageHandle, (VOID *)NULL, Buffer, BufferSize,
-                            AppImageHandle);
+    Status = gBS->LoadImage(FALSE, ImageHandle, (VOID *)NULL, Buffer, BufferSize, AppImageHandle);
     if (Buffer != NULL)
         FreePool(Buffer);
     if (Status != EFI_SUCCESS)
@@ -191,7 +188,7 @@ EFI_STATUS LoadFVbyGUID(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAG
   EFI_FILE *DumpFile = NULL;
 
   HandleProtocol = SystemTable->BootServices->HandleProtocol;
-  HandleProtocol(ImageHandle, &gEfiLoadedImageProtocolGuid, (void**)&LoadedImage);
+  HandleProtocol(ImageHandle, &gEfiLoadedImageProtocolGuid, (void **)&LoadedImage);
   HandleProtocol(LoadedImage->DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (void**)&FileSystem);
   FileSystem->OpenVolume(FileSystem, &Root);
 
@@ -199,7 +196,6 @@ EFI_STATUS LoadFVbyGUID(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAG
   AsciiStrToGuid(FileName, &GUID);
 
   /* Debug
-  EFI_GUID GUID = { 0x899407d7,0x99fe,0x43d8,0x9a,0x21,0x79,0xec,0x32,0x8c,0xac,0x21 };
   Print(L"GUID from OpCode.c raw: %s\n\r", Guid);
   Print(L"GUID from OpCode.c converted: %g\n\r", GUID);
   */
@@ -218,13 +214,13 @@ EFI_STATUS LoadFVbyGUID(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAG
   CHAR16 DFName[41] = { 0 };                                  //36 chars for guid, 4 for the ".bin" ext and 1 for null-terminator
   UnicodeSPrint(DFName, sizeof(DFName), L"%a.bin", FileName); //Append ".bin"
   Root->Open(Root, &DumpFile, DFName, EFI_FILE_MODE_WRITE | EFI_FILE_MODE_READ | EFI_FILE_MODE_CREATE, 0);
-  DumpFile->Write(DumpFile, &BufferSize, (VOID**)Buffer);
+  DumpFile->Write(DumpFile, &BufferSize, (VOID **)Buffer);
   DumpFile->Flush(DumpFile);
 
   if (ENG == TRUE) { Print(L"Creating image dump on FS: %r\n", Status); } //Print result
   else { Print(L"Создаем дамп PE секции драйвера, размер должен быть: %d,\nрезультат: %r\n", BufferSize, Status); }
 
-  Status = gBS->LoadImage(FALSE, ImageHandle, (VOID*)NULL, Buffer, BufferSize, AppImageHandle); //Parse saved buffer to LoadImage BS
+  Status = gBS->LoadImage(FALSE, ImageHandle, (VOID *)NULL, Buffer, BufferSize, AppImageHandle); //Parse saved buffer to LoadImage BS
   if (Buffer != NULL)
     FreePool(Buffer);
   if (Status != EFI_SUCCESS)
@@ -249,4 +245,43 @@ EFI_STATUS Exec(EFI_HANDLE *AppImageHandle)
     if (ENG == TRUE) { Print(L"Image Retuned - %r %x\n", Status); }
     else { Print(L"Драйвер сообщил - %r %x\n", Status); }
     return Status;
+}
+
+UINTN GetAptioHiiDB(BOOLEAN BuffersizeOrPointer)
+{
+  typedef struct {
+    UINT32 DataSize;
+    UINT32 DataPointer;
+  } HiiDbBlock_DATA;
+
+    EFI_STATUS Status;
+    EFI_GUID ExportDatabaseGuid = { 0x1b838190, 0x4625, 0x4ead, {0xab, 0xc9, 0xcd, 0x5e, 0x6a, 0xf1, 0x8f, 0xe0} };
+    UINTN Size = 8;
+    HiiDbBlock_DATA HiiDB; //The whole var is 8 bytes, I save it into 2 by 4
+    UINTN BufferSize = 0, Pointer = 0, Result = 0;
+
+    Status = gRT->GetVariable(
+        L"HiiDB",
+        &ExportDatabaseGuid,
+        NULL,
+        &Size,
+        &HiiDB);
+
+    if (Status == EFI_SUCCESS && Size != 0)
+    {
+      //Get buffers from pointer, source called with &
+      CopyMem(&BufferSize, &HiiDB.DataSize, Size / 2);
+      CopyMem(&Pointer, &HiiDB.DataPointer, Size / 2);
+
+      /*Debug
+      Print(L"\nPart1:\n");
+      Print(L"%x\n", BufferSize);
+      Print(L"\nPart2:\n");
+      Print(L"%x\n", Pointer);
+      */
+
+      BuffersizeOrPointer ? (Result = Pointer) : (Result = BufferSize);
+      return Result;
+    }
+    return 0;
 }

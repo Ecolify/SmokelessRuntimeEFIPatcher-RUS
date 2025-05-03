@@ -299,13 +299,13 @@ EFI_STATUS
 LocateAndLoadFvFromGuid(EFI_GUID GUID16, EFI_SECTION_TYPE Section_Type, UINT8 **Buffer, UINTN *BufferSize)
 {
   EFI_STATUS Status;
-  EFI_HANDLE* HandleBuffer;
+  EFI_HANDLE *HandleBuffer;
   UINTN NumberOfHandles;
   //UINT32 FvStatus;
   //EFI_FV_FILE_ATTRIBUTES Attributes;
   // UINTN Size;
   UINTN Index;
-  EFI_FIRMWARE_VOLUME2_PROTOCOL* FvInstance;
+  EFI_FIRMWARE_VOLUME2_PROTOCOL *FvInstance;
   EFI_GUID Guid = GUID16;
 
   // FvStatus = 0; // Leftover from Smokeless
@@ -353,7 +353,7 @@ LocateAndLoadFvFromGuid(EFI_GUID GUID16, EFI_SECTION_TYPE Section_Type, UINT8 **
     EFI_FV_FILE_ATTRIBUTES FileAttributes;
     UINTN FileSize;
     EFI_GUID NameGuid = { 0 };
-    VOID* Keys = AllocateZeroPool(FvInstance->KeySize);
+    VOID *Keys = AllocateZeroPool(FvInstance->KeySize);
     while (TRUE)
     {
       FileType = EFI_FV_FILETYPE_ALL;
@@ -368,7 +368,7 @@ LocateAndLoadFvFromGuid(EFI_GUID GUID16, EFI_SECTION_TYPE Section_Type, UINT8 **
         }
         break;
       }
-      VOID* String;
+      VOID *String;
       UINTN StringSize = 0;
       UINT32 AuthenticationStatus;
       String = NULL;
@@ -383,7 +383,7 @@ LocateAndLoadFvFromGuid(EFI_GUID GUID16, EFI_SECTION_TYPE Section_Type, UINT8 **
         {
           Print(L"GUID: %g, Размер: %d, Имя: %s, Тип: %d\n\r", NameGuid, FileSize, String, FileType);
         }
-        Status = FvInstance->ReadSection(FvInstance, &NameGuid, Section_Type, 0, (VOID**)Buffer, BufferSize, &AuthenticationStatus);
+        Status = FvInstance->ReadSection(FvInstance, &NameGuid, Section_Type, 0, (VOID **)Buffer, BufferSize, &AuthenticationStatus);
         if (ENG == TRUE) { Print(L"Result Cause %r\n\r", Status); }
         else
         {

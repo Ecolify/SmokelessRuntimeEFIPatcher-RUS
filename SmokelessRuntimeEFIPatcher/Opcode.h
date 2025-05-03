@@ -64,3 +64,7 @@ EFI_STATUS LoadFVbyGUID(
 EFI_STATUS Exec(
   EFI_HANDLE *AppImageHandle
 );
+
+UINTN GetAptioHiiDB(
+  BOOLEAN BuffersizeOrPointer
+);

@@ -3,7 +3,7 @@
 #include "Opcode.h"
 
 //Specify app version
-#define SREP_VERSION L"0.1.6rc1 RUS"
+#define SREP_VERSION L"0.1.6 RUS"
 
 //Get font data having external linkage
 extern EFI_WIDE_GLYPH gSimpleFontWideGlyphData[];
@@ -36,13 +36,15 @@ enum OPCODE
     LOAD_FV,
     LOAD_GUID,
     PATCH,
-    EXEC
+    PATCH_FAST,
+    EXEC,
+    GET_DB
 };
 
 //Declare data structure for a single operation
 struct OP_DATA
 {
-    enum OPCODE ID;               //Loaded, LoadFromFV, LoadFromFS and etc. See the corresp. OPCODE.
+    enum OPCODE ID;               //Loaded, LoadFromFV, Patch and etc. See the corresp. OPCODE.
     CHAR8 *Name;                  //<FileName>, argument for the OPCODE.
     BOOLEAN Name_Dyn_Alloc;
     UINT64 PatchType;             //Pattern, Offset, Rel...
@@ -57,14 +59,14 @@ struct OP_DATA
     BOOLEAN ARG6_Dyn_Alloc;
     UINT64 ARG7;                  //Pattern to search for
     BOOLEAN ARG7_Dyn_Alloc;
-    CHAR8 *Regex;
+    CHAR8 *RegexChar;
     BOOLEAN Regex_Dyn_Alloc;
     struct OP_DATA *next;
     struct OP_DATA *prev;
 };
 
 typedef struct {
-  VOID* BaseAddress;
+  VOID *BaseAddress;
   UINTN BufferSize;
   UINTN Width;
   UINTN Height;
@@ -79,7 +81,7 @@ typedef struct {
 //Writes string from the buffer to SREP.log
 VOID LogToFile( EFI_FILE *LogFile, CHAR16 *String)
 {
-        UINTN Size = StrLen(String) * 2;      //Size variable equals to the string size
+        UINTN Size = StrLen(String) * 2;      //Size variable equals to the string size, multiplies by 2 cuz Unicode is CHAR16
         LogFile->Write(LogFile,&Size,String); //EFI_FILE_WRITE (Filename, size, the actual string to write)
         LogFile->Flush(LogFile);              //Flushes all modified data associated with a file to a device
 }
@@ -96,7 +98,7 @@ static VOID Add_OP_CODE(struct OP_DATA *Start, struct OP_DATA *opCode)
     opCode->prev = next;
 }
 
-//Detect OPCODEs in read buffer and dispatch immediatelly. Currently unused
+//Detect OPCODEs in read buffer and dispatch immediatelly. Currently unused.
 static VOID PrintOPChain(struct OP_DATA *Start)
 {
     struct OP_DATA *next = Start;
@@ -144,8 +146,16 @@ static VOID PrintOPChain(struct OP_DATA *Start)
             UnicodeSPrint(Log,512,u"%a","PATCH\n\r");
             LogToFile(LogFile,Log);
             break;
+        case PATCH_FAST:
+            UnicodeSPrint(Log, 512, u"%a","PATCH_FAST\n\r");
+            LogToFile(LogFile, Log);
+            break;
         case EXEC:
             UnicodeSPrint(Log,512,u"%a","EXEC\n\r");
+            LogToFile(LogFile,Log);
+            break;
+        case GET_DB:
+            UnicodeSPrint(Log,512,u"%a","GET_DB\n\r");
             LogToFile(LogFile,Log);
             break;
 
@@ -174,23 +184,24 @@ static VOID PrintDump(UINT16 Size, UINT8 *DUMP)
 }
 
 //Simple font support function
-static UINT8 *CreateSimpleFontPkg(EFI_WIDE_GLYPH *WideGlyph,
+static UINT8 *CreateSimpleFontPkg(
+  EFI_WIDE_GLYPH *WideGlyph,
   UINT32 WideGlyphSizeInBytes,
   EFI_NARROW_GLYPH *NarrowGlyph,
-  UINT32 NarrowGlyphSizeInBytes)
-{
+  UINT32 NarrowGlyphSizeInBytes
+){
   UINT32 PackageLen = sizeof(EFI_HII_SIMPLE_FONT_PACKAGE_HDR) + WideGlyphSizeInBytes + NarrowGlyphSizeInBytes + 4;
-  UINT8* FontPackage = (UINT8*)AllocateZeroPool(PackageLen);
-  *(UINT32*)FontPackage = PackageLen;
+  UINT8 *FontPackage = (UINT8*)AllocateZeroPool(PackageLen);
+  *(UINT32 *)FontPackage = PackageLen;
 
-  EFI_HII_SIMPLE_FONT_PACKAGE_HDR* SimpleFont;
+  EFI_HII_SIMPLE_FONT_PACKAGE_HDR *SimpleFont;
   SimpleFont = (EFI_HII_SIMPLE_FONT_PACKAGE_HDR*)(FontPackage + 4);
   SimpleFont->Header.Length = (UINT32)(PackageLen - 4);
   SimpleFont->Header.Type = EFI_HII_PACKAGE_SIMPLE_FONTS;
   SimpleFont->NumberOfNarrowGlyphs = (UINT16)(NarrowGlyphSizeInBytes / sizeof(EFI_NARROW_GLYPH));
   SimpleFont->NumberOfWideGlyphs = (UINT16)(WideGlyphSizeInBytes / sizeof(EFI_WIDE_GLYPH));
 
-  UINT8* Location = (UINT8*)(&SimpleFont->NumberOfWideGlyphs + 1);
+  UINT8 *Location = (UINT8*)(&SimpleFont->NumberOfWideGlyphs + 1);
   CopyMem(Location, NarrowGlyph, NarrowGlyphSizeInBytes);
   CopyMem(Location + NarrowGlyphSizeInBytes, WideGlyph, WideGlyphSizeInBytes);
 
@@ -312,21 +323,23 @@ EFI_STATUS EFIAPI SREPEntry(
 
   Print(L"Welcome to Smokeless Runtime EFI Patcher %s\n\r", SREP_VERSION);
 
-  if (Status == EFI_SUCCESS) {
-    if (ShellParameters->Argc == 2) {
-      if (!StrCmp(ShellParameters->Argv[1], L"ENG")) //Check for ENG arg
+  if (Status != EFI_UNSUPPORTED && ShellParameters->Argc == 2) {
+      if (!StrCmp(ShellParameters->Argv[1], L"ENG")) //Check for ENG arg, Argv[0] is app name
       {
         ENG = TRUE;
         Print(L"English mode\n\n");
+        goto SetupExit;
       }
-    }
+      //Reach this if arg is not "ENG"
+      Print(L"ShellParameters init status: %r\n\rEntered argument: %s\n\n\r", Status, ShellParameters->Argv[1]);
+      gBS->Stall(3000000);
+      goto SetupExit;
   }
   else
   {
     Print(L"Switch to English is disabled due to the outdated UEFI shell\n\n");
   }
-    
-    //Print(L"ShellParameters init status: %r\n\r", Status); //Shell Debug
+  SetupExit:
 
     gBS->SetWatchdogTimer(0, 0, 0, 0);  //Disable watchdog so the system doesn't reboot by timer
 
@@ -584,6 +597,13 @@ EFI_STATUS EFIAPI SREPEntry(
                 Add_OP_CODE(Start, Prev_OP);
                 continue;
             }
+            if (AsciiStrStr(&ConfigData[curr_pos], "FastPatch"))
+            {
+                Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+                Prev_OP->ID = PATCH_FAST;
+                Add_OP_CODE(Start, Prev_OP);
+                continue;
+            }
             if (AsciiStrStr(&ConfigData[curr_pos], "Patch"))
             {
                 Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
@@ -591,13 +611,24 @@ EFI_STATUS EFIAPI SREPEntry(
                 Add_OP_CODE(Start, Prev_OP);
                 continue;
             }
-
             if (AsciiStrStr(&ConfigData[curr_pos], "Exec"))
             {
-              if (ENG != TRUE) { Print(L"Обнаружена команда Exec, запуск приложения доб. в очередь\n\r"); }
+                if (ENG != TRUE) { Print(L"Обнаружена команда Exec, запуск приложения доб. в очередь\n\r"); }
                 Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
                 Prev_OP->ID = EXEC;
                 Add_OP_CODE(Start, Prev_OP);
+                continue;
+            }
+            if (AsciiStrStr(&ConfigData[curr_pos], "GetDB"))
+            {
+                /*The Op turned out being useless
+                Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+                Prev_OP->ID = GET_DB;
+                Add_OP_CODE(Start, Prev_OP);
+                */
+                if (ENG == TRUE) { Print(L"I commented out this Op, you can't use it\n\r"); }
+                else
+                { Print(L"Я закомментировал эту команду, сейчас она не сработает\n\r"); }
                 continue;
             }
             if (ENG == TRUE) {
@@ -612,7 +643,7 @@ EFI_STATUS EFIAPI SREPEntry(
             }
             return EFI_INVALID_PARAMETER;
         }
-        if ((Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID || Prev_OP->ID == LOADED || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE) && Prev_OP->Name == 0)
+        if ((Prev_OP->ID == GET_DB || Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID || Prev_OP->ID == LOADED || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE) && Prev_OP->Name == 0)
         {
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"Found File %a\n\r", &ConfigData[curr_pos]);
@@ -630,7 +661,7 @@ EFI_STATUS EFIAPI SREPEntry(
             Prev_OP->Name_Dyn_Alloc = TRUE;
             continue;
         }
-        if (Prev_OP->ID == PATCH && Prev_OP->PatchType == 0)
+        if ((Prev_OP->ID == PATCH_FAST || Prev_OP->ID == PATCH) && Prev_OP->PatchType == 0)
         {
             if (AsciiStrStr(&ConfigData[curr_pos], "Offset"))
             {
@@ -690,7 +721,7 @@ EFI_STATUS EFIAPI SREPEntry(
         //This is the new itereration, we are just in from the Pattern OPCODE
         //Check which arguments are present, remember to patch the location by OFFSET
         //ARG3 is Offset, ARG6 is Pattern Length, ARG7 is Pattern Buffer, Regex is raw pattern string
-        if (Prev_OP->ID == PATCH && Prev_OP->PatchType != 0 && Prev_OP->ARG3 == 0)
+        if ((Prev_OP->ID == PATCH_FAST || Prev_OP->ID == PATCH) && Prev_OP->PatchType != 0 && Prev_OP->ARG3 == 0)
         {
             if (Prev_OP->PatchType == OFFSET || Prev_OP->PatchType == REL_NEG_OFFSET || Prev_OP->PatchType == REL_POS_OFFSET) //Patch by offset
             {
@@ -720,9 +751,9 @@ EFI_STATUS EFIAPI SREPEntry(
                 }
                 
                 UINTN RegexLength = AsciiStrLen(&ConfigData[curr_pos]) + 1;
-                CHAR8 *Regex = AllocateZeroPool(RegexLength);
-                CopyMem(Regex, &ConfigData[curr_pos], RegexLength);
-                Prev_OP->Regex = Regex;
+                CHAR8 *RegexChar = AllocateZeroPool(RegexLength);
+                CopyMem(RegexChar, &ConfigData[curr_pos], RegexLength);
+                Prev_OP->RegexChar = RegexChar;
                 Prev_OP->Regex_Dyn_Alloc = TRUE;
 
                 //Old imp, no regex 
@@ -735,7 +766,7 @@ EFI_STATUS EFIAPI SREPEntry(
 
         //Check which arguments are present, remember to patch the location by PATTERN
         //ARG4 is Patch Length, ARG5 is Patch Buffer
-        if (Prev_OP->ID == PATCH && Prev_OP->PatchType != 0 && Prev_OP->ARG3 != 0)
+        if ((Prev_OP->ID == PATCH_FAST || Prev_OP->ID == PATCH) && Prev_OP->PatchType != 0 && Prev_OP->ARG3 != 0)
         {
 
             Prev_OP->ARG4 = AsciiStrLen(&ConfigData[curr_pos]) / 2;
@@ -779,6 +810,13 @@ EFI_STATUS EFIAPI SREPEntry(
     //The actual execution
     struct OP_DATA *next;
     INT64 BaseOffset;
+
+    UINT64 *Captures = { 0 }; //Represents found offsets, each offset can be up to 8 bytes
+    UINTN j = 0;
+
+    BOOLEAN isDBThere = FALSE;
+    UINTN DBSize = 0;
+    UINTN DBPointer = 0;
 
     for (next = Start; next != NULL; next = next->next)
     {
@@ -892,30 +930,7 @@ EFI_STATUS EFIAPI SREPEntry(
               LogToFile(LogFile, Log);
             }
             Status = LoadFV(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32);
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Loaded Image %r -> %x\n\r", Status, ImageInfo->ImageBase);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Смещение загрузки: 0x%x\n\r", ImageInfo->ImageBase);
-              UnicodeSPrint(Log, 512, u"Смещение загрузки: 0x%x\n\r", ImageInfo->ImageBase);
-              LogToFile(LogFile, Log);
-            }
-            break;
-        case LOAD_GUID:
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing LoadGUIDandSavePE\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Выполняется аргумент LoadGUIDandSavePE\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент LoadGUIDandSavePE\n\r");
-              LogToFile(LogFile, Log);
-            }
-            Status = LoadFVbyGUID(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32, SystemTable);
-            if (Status == EFI_NOT_FOUND) {
+            if (Status != EFI_SUCCESS) {
               if (ENG == TRUE) {
                 Print(L"Search result: %r\n\r", Status);
                 UnicodeSPrint(Log, 512, u"Search result: %r\n\r", Status);
@@ -940,6 +955,190 @@ EFI_STATUS EFIAPI SREPEntry(
               LogToFile(LogFile, Log);
             }
             break;
+        case LOAD_GUID:
+            if (ENG == TRUE) {
+              UnicodeSPrint(Log, 512, u"%a", "Executing LoadGUIDandSavePE\n\r");
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"Выполняется аргумент LoadGUIDandSavePE\n\r");
+              UnicodeSPrint(Log, 512, u"Выполняется аргумент LoadGUIDandSavePE\n\r");
+              LogToFile(LogFile, Log);
+            }
+            Status = LoadFVbyGUID(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32, SystemTable);
+            if (Status != EFI_SUCCESS) {
+              if (ENG == TRUE) {
+                Print(L"Search result: %r\n\r", Status);
+                UnicodeSPrint(Log, 512, u"Search result: %r\n\r", Status);
+                LogToFile(LogFile, Log);
+              }
+              else
+              {
+                Print(L"Результат поиска: %r\n\r", Status);
+                UnicodeSPrint(Log, 512, u"Результат поиска: %r\n\r", Status);
+                LogToFile(LogFile, Log);
+              }
+              break;
+            };
+            if (ENG == TRUE) {
+              UnicodeSPrint(Log, 512, u"Loaded Image %r -> %x\n\r", Status, ImageInfo->ImageBase);
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"Смещение загрузки: 0x%x\n\r", ImageInfo->ImageBase);
+              UnicodeSPrint(Log, 512, u"Смещение загрузки: 0x%x\n\r", ImageInfo->ImageBase);
+              LogToFile(LogFile, Log);
+            }
+            break;
+        case PATCH_FAST:
+          /*
+          * Reset to patch by ImageInfo if
+          * Op has changed from GetDB
+          */
+          if(Prev_OP->ID != GET_DB && Prev_OP->ID != PATCH_FAST){
+            isDBThere = FALSE;
+            DBPointer = 0;
+          }
+          if (!isDBThere) {
+            if (ENG == TRUE) {
+              UnicodeSPrint(Log, 512, u"%a", "Executing Fast Patch\n\r");
+              LogToFile(LogFile, Log);
+              UnicodeSPrint(Log, 512, u"Patching Image Size %x:\n\r", ImageInfo->ImageSize);
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"Выполняется аргумент Fast Patch\n\r");
+              Print(L"Размер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
+              UnicodeSPrint(Log, 512, u"Выполняется аргумент Fast Patch\n\r");
+              LogToFile(LogFile, Log);
+              UnicodeSPrint(Log, 512, u"Размер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
+              LogToFile(LogFile, Log);
+            }
+          }
+
+            if (next->PatchType == PATTERN)
+            {
+                if (ENG == TRUE) {
+                  UnicodeSPrint(Log, 512, u"%a", "Finding Offset\n\r");
+                  LogToFile(LogFile, Log);
+                }
+                else
+                {
+                  Print(L"Поиск шаблона\n\r");
+                  UnicodeSPrint(Log, 512, u"Поиск шаблона\n\r");
+                  LogToFile(LogFile, Log);
+                }
+                if (isDBThere) {
+                  for (UINTN i = 0; i < DBSize - next->ARG6; i += 1)
+                  {
+                    next->ARG3 = DBPointer + i;
+                    //Since DBPointer is not (UINT8 *), have to use ARG3 as DestinBuf, which slows the cycle
+                    if (CompareMem((UINT8 *)next->ARG3, (UINT8 *)next->ARG7, next->ARG6) == 0)
+                    {
+                      break;
+                    }
+                  }
+                  /*Debug
+                  Print(L"Base: %x\n\r", DBPointer);
+                  Print(L"ARG3: %x\n\r", (UINT8 *)next->ARG3);
+                  */
+                }
+                else
+                {
+                  for (UINTN i = 0; i < ImageInfo->ImageSize - next->ARG6; i += 1)
+                  {
+                    //Old imp, no regex
+                    if (CompareMem(((UINT8 *)ImageInfo->ImageBase) + i, (UINT8 *)next->ARG7, next->ARG6) == 0)
+                    {
+                      next->ARG3 = i;
+                      break;
+                    }
+                  }
+                }
+                if (next->ARG3 == 0xFFFFFFFF) //Stopped near overflow
+                {
+                  if (ENG == TRUE) {
+                    UnicodeSPrint(Log, 512, u"%a", "No Pattern Found\n\r");
+                    LogToFile(LogFile, Log);
+                  }
+                  else
+                  {
+                    Print(L"Шаблон не найден\n\r");
+                    UnicodeSPrint(Log, 512, u"Шаблон не найден\n\r");
+                    LogToFile(LogFile, Log);
+                  }
+                  next->ARG3 = 0;
+                  break;
+                }
+            }
+            if (next->PatchType == REL_POS_OFFSET)
+            {
+              next->ARG3 = BaseOffset + next->ARG3;
+              if (ENG != TRUE) {
+                Print(L"Поиск смещения вперёд\n\r");
+                UnicodeSPrint(Log, 512, u"Поиск смещения вперёд\n\r");
+                LogToFile(LogFile, Log);
+              }
+            }
+            if (next->PatchType == REL_NEG_OFFSET)
+            {
+              next->ARG3 = BaseOffset - next->ARG3;
+              if (ENG != TRUE) {
+                Print(L"Поиск смещения назад\n\r");
+                UnicodeSPrint(Log, 512, u"Поиск смещения назад\n\r");
+                LogToFile(LogFile, Log);
+              }
+            }
+            BaseOffset = next->ARG3;
+            if (ENG == TRUE) {
+              UnicodeSPrint(Log, 512, u"Offset in section: %x\n\r", next->ARG3);
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"Смещение в секции: 0x%x\n\r", next->ARG3);
+              UnicodeSPrint(Log, 512, u"Смещение в секции: 0x%x\n\r", next->ARG3);
+              LogToFile(LogFile, Log);
+            }
+            
+            if (next->ARG3 != 0) {
+              if (ENG == TRUE) {
+                Print(L"\nNot patched\n\r");
+                UnicodeSPrint(Log, 512, u"%a", "\nPatched\n\r");
+                LogToFile(LogFile, Log);
+              }
+              else
+              {
+                Print(L"Патч выполнен\n\r");
+                UnicodeSPrint(Log, 512, u"\nПатч выполнен\n\r");
+                LogToFile(LogFile, Log);
+              }
+
+              if (!isDBThere) {
+                CopyMem((UINT8 *)ImageInfo->ImageBase + next->ARG3, (UINT8 *)next->ARG5, next->ARG4);
+              }
+              else
+              {
+                CopyMem((UINT8 *)next->ARG3, (UINT8 *)next->ARG5, next->ARG4);
+              }
+            }
+            else
+            {
+              if (ENG == TRUE) {
+                UnicodeSPrint(Log, 512, u"%a", "\nNot patched\n\r");
+                LogToFile(LogFile, Log);
+              }
+              else
+              {
+                Print(L"Патч провалился\n\r");
+                UnicodeSPrint(Log, 512, u"\nПатч провалился\n\r");
+                LogToFile(LogFile, Log);
+              }
+            }
+            break;
         case PATCH:
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing Patch\n\r");
@@ -957,7 +1156,6 @@ EFI_STATUS EFIAPI SREPEntry(
               LogToFile(LogFile, Log);
             }
 
-            // PrintDump(0x200, (UINT8 *)(LoadedImage->ImageBase));     // A leftover from Smokeless
             if (next->PatchType == PATTERN)
             {
                 if (ENG == TRUE) {
@@ -970,40 +1168,77 @@ EFI_STATUS EFIAPI SREPEntry(
                   UnicodeSPrint(Log, 512, u"Поиск шаблона\n\r");
                   LogToFile(LogFile, Log);
                 }
-                Print(L"\n%a\n\n\r", (CHAR8 *)next->Regex); //PrintDump ascii
 
-                BOOLEAN CResult = FALSE; // Comparison Result
+                Print(L"\n%a\n\n\r", (CHAR8 *)next->RegexChar); //PrintDump ascii to screen
+                UnicodeSPrint(Log, 512, u"%a%a%a", "\n\t", (CHAR8 *)next->RegexChar, "\n\t"); //PrintDump unicode to log
+                LogToFile(LogFile, Log);
 
+                BOOLEAN CResult = FALSE, CResult2 = FALSE; //Comparison Result
                 for (UINTN i = 0; i < ImageInfo->ImageSize - next->ARG6; i += 1)
                 {
-                  //Old imp, no regex
-                  CompareMem(((UINT8 *)ImageInfo->ImageBase), (UINT8 *)next->ARG7, next->ARG6);
+                  Status = EFI_NOT_FOUND; //Reset status to stop saving offset to ARG3
+                  CResult2 = FALSE; //Reset result to keep RegexMatch n2 running
 
-                  //Regex match
-                  RegexMatch(((UINT8 *)ImageInfo->ImageBase) + i, (CHAR8 *)next->Regex, (UINT8)next->ARG6, RegularExpressionProtocol, &CResult);
-                  if (CResult != FALSE)
+                  if (CResult == FALSE) {
+                    //Regex match
+                    Status = RegexMatch(((UINT8 *)ImageInfo->ImageBase) + i, (CHAR8 *)next->RegexChar, (UINT8)next->ARG6, RegularExpressionProtocol, &CResult);
+                    //Status now SUCCESS
+                  }
+
+                  /*
+                  * Save offset to ARG3 if
+                  * 1. The 1st RegexMatch finished with success
+                  * 2. It happened this iteration
+                  */
+                  if (CResult != FALSE && Status == EFI_SUCCESS)
                   {
                     if (ENG == TRUE) {
-                      Print(L"Regex: %a\n\r", CResult ? "Worked" : "Failed");
-                      UnicodeSPrint(Log, 512, u"Regex: %a\n\r", CResult ? "Worked" : "Failed");
+                      Print(L"Found\n\r");
+                      UnicodeSPrint(Log, 512, u"^ Search string ^\n\r");
                       LogToFile(LogFile, Log);
-                      UnicodeSPrint(Log, 512, u"\rFound\n\r");
+                      UnicodeSPrint(Log, 512, u"\rFound patterns:\n\r");
                       LogToFile(LogFile, Log);
+                      Print(L"Please, standby...\n\r");
                     }
                     else
                     {
-                      Print(L"РегВыр: %a\n\r", CResult ? "Worked" : "Failed");
-                      UnicodeSPrint(Log, 512, u"РегВыр: %a\n\r", CResult ? "Worked" : "Failed");
+                      Print(L"Найдено\n\r");
+                      UnicodeSPrint(Log, 512, u"^ Поиск строки ^\n\r");
                       LogToFile(LogFile, Log);
-                      Print(L"Место выбрано\n\r");
-                      UnicodeSPrint(Log, 512, u"\rМесто выбрано\n\r");
+                      UnicodeSPrint(Log, 512, u"\rНайденные места:\n\r");
                       LogToFile(LogFile, Log);
+                      Print(L"Ждите...\n\r");
                     }
+                    next->ARG3 = i;
+                  }
 
-                        next->ARG3 = i; //Save offset to ARG3
-                        PrintDump(next->ARG6, (UINT8 *)ImageInfo->ImageBase + next->ARG3);  //The cause of my edit: winraid.level1techs.com/t/89351/6
-                        break;
+                  if ((UINTN)next->ARG3 == i) {
+                    PrintDump(next->ARG6, (UINT8 *)ImageInfo->ImageBase + next->ARG3);  //The cause of PrintDump call edit: winraid.level1techs.com/t/89351/6
+                  }
+
+                  //Regex match with batch replacement. ARG 3 is used too widely, so I have to use RegexMatch again to fill Captures. CopyMem will be used again either.
+                  /*
+                  * Begin matching if
+                  * 1. This iteration is new
+                  * 2. The 1st RegexMatch finished with success
+                  */
+                  if ((UINTN)next->ARG3 != i && CResult != FALSE) {
+                    RegexMatch(((UINT8 *)ImageInfo->ImageBase) + i, (CHAR8 *)next->RegexChar, (UINT8)next->ARG6, RegularExpressionProtocol, &CResult2);
+                    if (CResult2 != FALSE) {
+                      if (ENG == TRUE) {
+                        Print(L"Found another match\n\r");
+                      }
+                      else
+                      {
+                        Print(L"Найдено ещё одно совпадение\n\r");
+                      }
+                      //Fill Captures[j]
+                      Captures[j] = i;
+                      j += 1;
+
+                      PrintDump(next->ARG6, (UINT8 *)ImageInfo->ImageBase + i);
                     }
+                  }
                 }
                 if (next->ARG3 == 0xFFFFFFFF) //Stopped near overflow
                 {
@@ -1017,7 +1252,7 @@ EFI_STATUS EFIAPI SREPEntry(
                       UnicodeSPrint(Log, 512, u"Шаблон не найден\n\r");
                       LogToFile(LogFile, Log);
                     }
-                    //goto cleanup; //A leftover from Smokeless
+                    next->ARG3 = 0;
                 break;
                 }
             }
@@ -1041,26 +1276,69 @@ EFI_STATUS EFIAPI SREPEntry(
             }
             BaseOffset = next->ARG3;
             if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Offset %x\n\r", next->ARG3);
+              UnicodeSPrint(Log, 512, u"Offset in section: %x\n\r", next->ARG3);
               LogToFile(LogFile, Log);
             }
             else
             {
-              Print(L"Смещение 0x%x\n\r", next->ARG3);
-              UnicodeSPrint(Log, 512, u"Смещение 0x%x\n\r", next->ARG3);
+              Print(L"Смещение в секции: 0x%x\n\r", next->ARG3);
+              UnicodeSPrint(Log, 512, u"Смещение в секции: 0x%x\n\r", next->ARG3);
               LogToFile(LogFile, Log);
             }
             // PrintDump(next->ARG4+10,ImageInfo->ImageBase + next->ARG3 -5 ); //A leftover from Smokeless
-            CopyMem((UINT8 *)ImageInfo->ImageBase + next->ARG3, (UINT8 *)next->ARG5, next->ARG4);
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Patched\n\r");
-              LogToFile(LogFile, Log);
+
+            if (next->ARG3 != 0) {
+              if (ENG == TRUE) {
+                UnicodeSPrint(Log, 512, u"%a", "\nPatched\n\r");
+                LogToFile(LogFile, Log);
+              }
+              else
+              {
+                Print(L"Патч выполнен\n\r");
+                UnicodeSPrint(Log, 512, u"\nПатч выполнен\n\r");
+                LogToFile(LogFile, Log);
+              }
             }
             else
             {
-              Print(L"Патч выполнен\n\r");
-              UnicodeSPrint(Log, 512, u"Патч выполнен\n\r");
-              LogToFile(LogFile, Log);
+              if (ENG == TRUE) {
+                Print(L"Not patched\n\n\r");
+                UnicodeSPrint(Log, 512, u"%a", "Not patched\n\n\r");
+                LogToFile(LogFile, Log);
+              }
+              else
+              {
+                Print(L"Патч провалился\n\n\r");
+                UnicodeSPrint(Log, 512, u"Патч провалился\n\n\r");
+                LogToFile(LogFile, Log);
+              }
+              // Patch first found instance only
+              CopyMem((UINT8 *)ImageInfo->ImageBase + next->ARG3, (UINT8 *)next->ARG5, next->ARG4);
+            }
+
+            // Patch every instance from Captures (it includes all except the first one)
+            if (j != 0) {
+              if (ENG == TRUE) {
+                Print(L"Additional matches for pattern: %d\n\r", j);
+              }
+              else
+              {
+                Print(L"Доп. совпадений с шаблоном: %d\n\r", j);
+              }
+              for (UINTN i = 0; i < j; i += 1) {
+                if (ENG == TRUE) {
+                  Print(L"%d offset in RAM: 0x%x\n\r", i + 1, (UINT8 *)ImageInfo->ImageBase + Captures[i]);
+                  UnicodeSPrint(Log, 512, u"%d offset in RAM: 0x%x\n\r", i + 1, (UINT8 *)ImageInfo->ImageBase + Captures[i]);
+                  LogToFile(LogFile, Log);
+                }
+                else
+                {
+                  Print(L"%d смещение в RAM: 0x%x\n\r", i + 1, (UINT8 *)ImageInfo->ImageBase + Captures[i]);
+                  UnicodeSPrint(Log, 512, u"%d смещение в RAM: 0x%x\n\r", i + 1, (UINT8 *)ImageInfo->ImageBase + Captures[i]);
+                  LogToFile(LogFile, Log);
+                }
+                CopyMem((UINT8 *)ImageInfo->ImageBase + Captures[i], (UINT8 *)next->ARG5, next->ARG4);
+              }
             }
             // PrintDump(next->ARG4+10,ImageInfo->ImageBase + next->ARG3 -5 ); //A leftover from Smokeless
             break;
@@ -1077,6 +1355,47 @@ EFI_STATUS EFIAPI SREPEntry(
             }
             gBS->Stall(3000000);
             Exec(&AppImageHandle);
+            break;
+        case GET_DB:
+            if (ENG == TRUE) {
+              UnicodeSPrint(Log, 512, u"%a", "Executing GetDB\n\r");
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"Выполняется аргумент GetDB\n\r");
+              UnicodeSPrint(Log, 512, u"Выполняется аргумент GetDB\n\r");
+              LogToFile(LogFile, Log);
+            }
+            DBSize = GetAptioHiiDB( 0 ); DBPointer = GetAptioHiiDB( 1 );
+            Print(L"Size: %x, Pointer: %x\n\r", DBSize, DBPointer);
+            if (DBSize == 0 || DBPointer == 0) {
+              if (ENG == TRUE) {
+                Print(L"HiiDB not Found\n\r");
+                UnicodeSPrint(Log, 512, u"HiiDB not Found\n\r");
+                LogToFile(LogFile, Log);
+              }
+              else
+              {
+                Print(L"HiiDB не найдена\n\r");
+                UnicodeSPrint(Log, 512, u"HiiDB не найдена\n\r");
+                LogToFile(LogFile, Log);
+              }
+              isDBThere = FALSE;
+              break;
+            }
+            if (ENG == TRUE) {
+              Print(L"HiiDB Found\n\r");
+              UnicodeSPrint(Log, 512, u"Size: %x, Pointer: %x\n\r", DBSize, DBPointer);
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"HiiDB найдена\n\r");
+              UnicodeSPrint(Log, 512, u"Размер: %x, Указатель: %x\n\r", DBSize, DBPointer);
+              LogToFile(LogFile, Log);
+            }
+            isDBThere = TRUE;
             break;
         default:
             break;
@@ -1100,7 +1419,7 @@ EFI_STATUS EFIAPI SREPEntry(
         if (next->ARG7_Dyn_Alloc)
             FreePool((VOID *)next->ARG7);
         if (next->Regex_Dyn_Alloc)
-            FreePool((VOID *)next->Regex);
+            FreePool((VOID *)next->RegexChar);
     }
     next = Start;
     while (next->next != NULL)
