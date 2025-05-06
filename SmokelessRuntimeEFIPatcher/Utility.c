@@ -1,7 +1,10 @@
 ﻿#include "Utility.h"
 
 CHAR16 *
-FindLoadedImageFileName(IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage)
+FindLoadedImageFileName(
+  IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage,
+  IN EFI_GUID FilterProtocol
+)
 {
     EFI_GUID *NameGuid;
     EFI_STATUS Status;
@@ -23,9 +26,9 @@ FindLoadedImageFileName(IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage)
     }
 
     //
-    // Get the FirmwareVolume2Protocol of the device handle that this image was loaded from.
+    // Get the FilterProtocol of the device handle that this image was loaded from.
     //
-    Status = gBS->HandleProtocol(LoadedImage->DeviceHandle, &gEfiFirmwareVolume2ProtocolGuid, (VOID **)&Fv);
+    Status = gBS->HandleProtocol(LoadedImage->DeviceHandle, &FilterProtocol, (VOID **)&Fv);
 
     //
     // FirmwareVolume2Protocol is PI, and is not required to be available.
@@ -54,7 +57,10 @@ FindLoadedImageFileName(IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage)
 }
 
 UINTN
-FindLoadedImageBufferSize(IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage)
+FindLoadedImageBufferSize(
+  IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage,
+  IN EFI_GUID FilterProtocol
+)
 {
     EFI_GUID *NameGuid;
     EFI_STATUS Status;
@@ -78,7 +84,7 @@ FindLoadedImageBufferSize(IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage)
     //
     // Get the FirmwareVolume2Protocol of the device handle that this image was loaded from.
     //
-    Status = gBS->HandleProtocol(LoadedImage->DeviceHandle, &gEfiFirmwareVolume2ProtocolGuid, (VOID **)&Fv);
+    Status = gBS->HandleProtocol(LoadedImage->DeviceHandle, &FilterProtocol, (VOID **)&Fv);
 
     //
     // FirmwareVolume2Protocol is PI, and is not required to be available.
@@ -106,51 +112,13 @@ FindLoadedImageBufferSize(IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage)
     return BufferSize;
 }
 
-UINT8 *
-FindBaseAddressFromName(const CHAR16 *Name)
-{
-    EFI_STATUS Status;
-    UINTN HandleSize = 0;
-    EFI_HANDLE *Handles;
-
-    Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &HandleSize, NULL);
-    if (Status == EFI_BUFFER_TOO_SMALL)
-    {
-        Handles = AllocateZeroPool(HandleSize * sizeof(EFI_HANDLE));
-        Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &HandleSize, Handles);
-        if (ENG == TRUE) { Print(L"Retrived %d Handle, with %r\n\r", HandleSize, Status); }
-        else
-        {
-          Print(L"Всего найдено дескрипторов: %d\n\r", HandleSize);
-        }
-    }
-
-    EFI_LOADED_IMAGE_PROTOCOL *LoadedImageProtocol;
-    for (UINTN i = 0; i < HandleSize; i++)
-    {
-        Status = gBS->HandleProtocol(Handles[i], &gEfiLoadedImageProtocolGuid, (VOID **)&LoadedImageProtocol);  //Process every found handle
-        if (Status == EFI_SUCCESS)
-        {
-            CHAR16 *String = FindLoadedImageFileName(LoadedImageProtocol);
-            if (String != NULL)
-            {
-                if (StrCmp(Name, String) == 0)  //If SUCCESS, compare the handle' name with the one specified in cfg
-                {
-                  if (ENG == TRUE) { Print(L"Found %s at Address 0x%X\n\r", String, LoadedImageProtocol->ImageBase); }
-                  else
-                  {
-                    Print(L"Найден %s по смещению 0x%X\n\r", String, LoadedImageProtocol->ImageBase);
-                  }
-                    return LoadedImageProtocol->ImageBase;
-                }
-            }
-        }
-    }
-    return NULL;
-}
-
 EFI_STATUS
-LoadandRunImage(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable, CHAR16 *FileName, EFI_HANDLE *AppImageHandle)
+LoadandRunImage(
+  EFI_HANDLE ImageHandle,
+  EFI_SYSTEM_TABLE *SystemTable,
+  CHAR16 *FileName,
+  EFI_HANDLE *AppImageHandle
+)
 {
     UINTN ExitDataSize;
     UINTN NumHandles;
@@ -170,8 +138,11 @@ LoadandRunImage(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable, CHAR16 *F
     for (Index = 0; Index < NumHandles; Index++)
     {
         Status = gBS->OpenProtocol(
-            SFS_Handles[Index], &gEfiSimpleFileSystemProtocolGuid, (VOID **)&BlkIo,
-            ImageHandle, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+          SFS_Handles[Index],
+          &gEfiSimpleFileSystemProtocolGuid,
+          (VOID **)&BlkIo,
+          ImageHandle, NULL,
+          EFI_OPEN_PROTOCOL_GET_PROTOCOL);
 
         if (Status != EFI_SUCCESS)
         {
@@ -197,7 +168,13 @@ LoadandRunImage(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable, CHAR16 *F
 }
 
 EFI_STATUS
-LocateAndLoadFvFromName(CHAR16 *Name, EFI_SECTION_TYPE Section_Type, UINT8 **Buffer, UINTN *BufferSize)
+LocateAndLoadFvFromName(
+  CHAR16 *Name,
+  EFI_SECTION_TYPE Section_Type,
+  UINT8 **Buffer,
+  UINTN *BufferSize,
+  EFI_GUID FilterProtocol
+)
 {
     EFI_STATUS Status;
     EFI_HANDLE *HandleBuffer;
@@ -215,7 +192,7 @@ LocateAndLoadFvFromName(CHAR16 *Name, EFI_SECTION_TYPE Section_Type, UINT8 **Buf
     //
     Status = gBS->LocateHandleBuffer(
         ByProtocol,
-        &gEfiFirmwareVolume2ProtocolGuid,
+        &FilterProtocol,
         NULL,
         &NumberOfHandles,
         &HandleBuffer);
@@ -245,7 +222,7 @@ LocateAndLoadFvFromName(CHAR16 *Name, EFI_SECTION_TYPE Section_Type, UINT8 **Buf
 
         Status = gBS->HandleProtocol(
             HandleBuffer[Index],
-            &gEfiFirmwareVolume2ProtocolGuid,
+            &FilterProtocol,
             (VOID **)&FvInstance);
         ASSERT_EFI_ERROR(Status);
 
@@ -296,26 +273,26 @@ LocateAndLoadFvFromName(CHAR16 *Name, EFI_SECTION_TYPE Section_Type, UINT8 **Buf
 }
 
 EFI_STATUS
-LocateAndLoadFvFromGuid(EFI_GUID GUID16, EFI_SECTION_TYPE Section_Type, UINT8 **Buffer, UINTN *BufferSize)
+LocateAndLoadFvFromGuid(
+  EFI_GUID GUID16,
+  EFI_SECTION_TYPE Section_Type,
+  UINT8 **Buffer,
+  UINTN *BufferSize,
+  EFI_GUID FilterProtocol
+)
 {
   EFI_STATUS Status;
   EFI_HANDLE *HandleBuffer;
   UINTN NumberOfHandles;
-  //UINT32 FvStatus;
-  //EFI_FV_FILE_ATTRIBUTES Attributes;
-  // UINTN Size;
   UINTN Index;
   EFI_FIRMWARE_VOLUME2_PROTOCOL *FvInstance;
-  EFI_GUID Guid = GUID16;
-
-  // FvStatus = 0; // Leftover from Smokeless
 
   //
   // Locate protocol.
   //
   Status = gBS->LocateHandleBuffer(
     ByProtocol,
-    &gEfiFirmwareVolume2ProtocolGuid,
+    &FilterProtocol,
     NULL,
     &NumberOfHandles,
     &HandleBuffer);
@@ -345,7 +322,7 @@ LocateAndLoadFvFromGuid(EFI_GUID GUID16, EFI_SECTION_TYPE Section_Type, UINT8 **
 
     Status = gBS->HandleProtocol(
       HandleBuffer[Index],
-      &gEfiFirmwareVolume2ProtocolGuid,
+      &FilterProtocol,
       (VOID**)&FvInstance);
     ASSERT_EFI_ERROR(Status);
 
@@ -376,7 +353,7 @@ LocateAndLoadFvFromGuid(EFI_GUID GUID16, EFI_SECTION_TYPE Section_Type, UINT8 **
       /* Debug
       //if (ENG != TRUE) Print(L"Current GUID: %g\n\r", NameGuid);      //Current processing guid per While iteration
       */
-      if (CompareGuid(&Guid, &NameGuid) == 1) //I can do via "&"
+      if (CompareGuid(&GUID16, &NameGuid) == 1) //I can do via "&"
       {
         if (ENG == TRUE) { Print(L"Found Guid: %g, FileSize: %d, Name: %s, Type: %d\n\r", NameGuid, FileSize, String, FileType); }
         else
@@ -443,4 +420,49 @@ RegexMatch(
   );
 
   return Status;
+}
+
+
+//Unused
+UINT8 *
+FindBaseAddressFromName(const CHAR16 *Name)
+{
+    EFI_STATUS Status;
+    UINTN HandleSize = 0;
+    EFI_HANDLE *Handles;
+
+    Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &HandleSize, NULL);
+    if (Status == EFI_BUFFER_TOO_SMALL)
+    {
+        Handles = AllocateZeroPool(HandleSize * sizeof(EFI_HANDLE));
+        Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &HandleSize, Handles);
+        if (ENG == TRUE) { Print(L"Retrived %d Handle, with %r\n\r", HandleSize, Status); }
+        else
+        {
+          Print(L"Всего найдено дескрипторов: %d\n\r", HandleSize);
+        }
+    }
+
+    EFI_LOADED_IMAGE_PROTOCOL *LoadedImageProtocol;
+    for (UINTN i = 0; i < HandleSize; i++)
+    {
+        Status = gBS->HandleProtocol(Handles[i], &gEfiLoadedImageProtocolGuid, (VOID **)&LoadedImageProtocol);  //Process every found handle
+        if (Status == EFI_SUCCESS)
+        {
+            CHAR16 *String = FindLoadedImageFileName(LoadedImageProtocol, gEfiFirmwareVolume2ProtocolGuid);
+            if (String != NULL)
+            {
+                if (StrCmp(Name, String) == 0)  //If SUCCESS, compare the handle' name with the one specified in cfg
+                {
+                  if (ENG == TRUE) { Print(L"Found %s at Address 0x%X\n\r", String, LoadedImageProtocol->ImageBase); }
+                  else
+                  {
+                    Print(L"Найден %s по смещению 0x%X\n\r", String, LoadedImageProtocol->ImageBase);
+                  }
+                    return LoadedImageProtocol->ImageBase;
+                }
+            }
+        }
+    }
+    return NULL;
 }

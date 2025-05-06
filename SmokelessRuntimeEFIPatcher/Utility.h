@@ -11,6 +11,7 @@
 #include <Library/MemoryAllocationLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/PrintLib.h>
+//#include <Protocol/FirmwareVolume.h>              //Eliminated hardcoded FilterProtocol. Is not part of edk2, may add manually.
 #include <Protocol/FirmwareVolume2.h>
 #include <Protocol/BlockIo.h>
 #include <Protocol/DevicePath.h>
@@ -37,11 +38,13 @@ VOID LogToFile(
 );
 
 CHAR16 *FindLoadedImageFileName(
-  IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage
+  IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage,
+  IN EFI_GUID FilterProtocol
 );
 
 UINTN FindLoadedImageBufferSize(
-  IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage
+  IN EFI_LOADED_IMAGE_PROTOCOL *LoadedImage,
+  IN EFI_GUID FilterProtocol
 );
 
 EFI_STATUS LoadandRunImage(
@@ -59,18 +62,19 @@ EFI_STATUS LocateAndLoadFvFromName(
   CHAR16 *Name,
   EFI_SECTION_TYPE Section_Type,
   UINT8 **Buffer,
-  UINTN *BufferSize
+  UINTN *BufferSize,
+  EFI_GUID FilterProtocol
 );
 
 EFI_STATUS LocateAndLoadFvFromGuid(
   EFI_GUID GUID16,
   EFI_SECTION_TYPE Section_Type,
   UINT8 **Buffer,
-  UINTN *BufferSize
+  UINTN *BufferSize,
+  EFI_GUID FilterProtocol
 );
 
-EFI_STATUS
-RegexMatch(
+EFI_STATUS RegexMatch(
   IN      UINT8 *DUMP,
   IN      CHAR8 *Pattern,
   IN      UINT16 Size,

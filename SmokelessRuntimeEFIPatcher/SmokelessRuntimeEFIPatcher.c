@@ -3,7 +3,7 @@
 #include "Opcode.h"
 
 //Specify app version
-#define SREP_VERSION L"0.1.6 RUS"
+#define SREP_VERSION L"0.1.7 RUS"
 
 //Get font data having external linkage
 extern EFI_WIDE_GLYPH gSimpleFontWideGlyphData[];
@@ -29,6 +29,7 @@ enum
 enum OPCODE
 {
     NO_OP,
+    COMPATIBILITY,
     LOADED,
     LOADED_GUID_PE,
     LOADED_GUID_TE,
@@ -38,6 +39,7 @@ enum OPCODE
     PATCH,
     PATCH_FAST,
     EXEC,
+    UNINSTALL_PROTOCOL,
     GET_DB
 };
 
@@ -79,7 +81,8 @@ typedef struct {
 #pragma warning(disable:4244)
 
 //Writes string from the buffer to SREP.log
-VOID LogToFile( EFI_FILE *LogFile, CHAR16 *String)
+VOID
+LogToFile(EFI_FILE *LogFile, CHAR16 *String)
 {
         UINTN Size = StrLen(String) * 2;      //Size variable equals to the string size, multiplies by 2 cuz Unicode is CHAR16
         LogFile->Write(LogFile,&Size,String); //EFI_FILE_WRITE (Filename, size, the actual string to write)
@@ -87,7 +90,8 @@ VOID LogToFile( EFI_FILE *LogFile, CHAR16 *String)
 }
 
 //Collect OPCODEs from cfg
-static VOID Add_OP_CODE(struct OP_DATA *Start, struct OP_DATA *opCode)
+static VOID
+Add_OP_CODE(struct OP_DATA *Start, struct OP_DATA *opCode)
 {
     struct OP_DATA *next = Start;
     while (next->next != NULL)
@@ -99,7 +103,8 @@ static VOID Add_OP_CODE(struct OP_DATA *Start, struct OP_DATA *opCode)
 }
 
 //Detect OPCODEs in read buffer and dispatch immediatelly. Currently unused.
-static VOID PrintOPChain(struct OP_DATA *Start)
+static VOID
+PrintOPChain(struct OP_DATA *Start)
 {
     struct OP_DATA *next = Start;
     while (next != NULL)
@@ -114,6 +119,10 @@ static VOID PrintOPChain(struct OP_DATA *Start)
             break;
         case LOADED:
             UnicodeSPrint(Log,512,u"%a","LOADED\n\r");
+            LogToFile(LogFile,Log);
+            break;
+        case COMPATIBILITY:
+            UnicodeSPrint(Log,512,u"%a","Compatibility\n\r");
             LogToFile(LogFile,Log);
             break;
         case LOADED_GUID_PE:
@@ -154,6 +163,10 @@ static VOID PrintOPChain(struct OP_DATA *Start)
             UnicodeSPrint(Log,512,u"%a","EXEC\n\r");
             LogToFile(LogFile,Log);
             break;
+        case UNINSTALL_PROTOCOL:
+            UnicodeSPrint(Log,512,u"%a","UNINSTALL_PROTOCOL\n\r");
+            LogToFile(LogFile,Log);
+            break;
         case GET_DB:
             UnicodeSPrint(Log,512,u"%a","GET_DB\n\r");
             LogToFile(LogFile,Log);
@@ -167,7 +180,8 @@ static VOID PrintOPChain(struct OP_DATA *Start)
 }
 
 //Prints those 16 symbols wide dumps
-static VOID PrintDump(UINT16 Size, UINT8 *DUMP)
+static VOID
+PrintDump(UINT16 Size, UINT8 *DUMP)
 {
     for (UINT16 i = 0; i < Size; i++)
     {
@@ -184,7 +198,8 @@ static VOID PrintDump(UINT16 Size, UINT8 *DUMP)
 }
 
 //Simple font support function
-static UINT8 *CreateSimpleFontPkg(
+static UINT8
+*CreateSimpleFontPkg(
   EFI_WIDE_GLYPH *WideGlyph,
   UINT32 WideGlyphSizeInBytes,
   EFI_NARROW_GLYPH *NarrowGlyph,
@@ -209,10 +224,8 @@ static UINT8 *CreateSimpleFontPkg(
 }
 
 //Main function, entry point
-EFI_STATUS EFIAPI SREPEntry(
-  IN EFI_HANDLE ImageHandle,
-  IN EFI_SYSTEM_TABLE *SystemTable
-){
+EFI_STATUS EFIAPI
+SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
   /*-----------------------------------------------------------------------------------*/
   //
   //For the font
@@ -223,7 +236,7 @@ EFI_STATUS EFIAPI SREPEntry(
                                           gSimpleFontNarrowGlyphData,
                                           gSimpleFontNarrowBytes);
 
-  EFI_HII_HANDLE Handle = HiiAddPackages(&gHIIRussianFontGuid,     //This is OK
+  EFI_HII_HANDLE Handle = HiiAddPackages(&gHIIRussianFontGuid, //This is OK
                                          NULL,
                                          FontPackage,
                                          NULL,
@@ -332,13 +345,13 @@ EFI_STATUS EFIAPI SREPEntry(
       gBS->Stall(3000000);
       goto SetupExit;
   }
-  else
+  if (Status != EFI_SUCCESS)
   {
     Print(L"Switch to English is disabled due to the outdated UEFI shell\n\n");
   }
   SetupExit:
 
-    gBS->SetWatchdogTimer(0, 0, 0, 0);  //Disable watchdog so the system doesn't reboot by timer
+    gBS->SetWatchdogTimer(0, 0, 0, 0); //Disable watchdog so the system doesn't reboot by timer
 
     HandleProtocol = SystemTable->BootServices->HandleProtocol;
     HandleProtocol(ImageHandle, &gEfiLoadedImageProtocolGuid, (void **)&LoadedImage);
@@ -490,6 +503,8 @@ EFI_STATUS EFIAPI SREPEntry(
     Start->ID = NO_OP;
     Start->next = NULL;
     BOOLEAN NullByteSkipped = FALSE;
+
+    //Regex match var
     CHAR16 *Pattern16 = NULL;
 
     while (curr_pos < ConfigDataSize)
@@ -504,15 +519,23 @@ EFI_STATUS EFIAPI SREPEntry(
             continue;
         }
         NullByteSkipped = FALSE;
-        if (ENG == TRUE) {
-          UnicodeSPrint(Log, 512, u"Current Parsing %a\n\r", &ConfigData[curr_pos]);
-          LogToFile(LogFile, Log);
+        if (!AsciiStrStr(&ConfigData[curr_pos], "#"))
+        {
+          if (ENG == TRUE) {
+            UnicodeSPrint(Log, 512, u"Current Parsing %a\n\r", &ConfigData[curr_pos]);
+            LogToFile(LogFile, Log);
+          }
+          else
+          {
+            Print(L"В данный момент обрабатываем строку %a\n\r", &ConfigData[curr_pos]);
+            UnicodeSPrint(Log, 512, u"В данный момент обрабатываем строку %a\n\r", &ConfigData[curr_pos]);
+            LogToFile(LogFile, Log);
+          }
         }
         else
         {
-          Print(L"В данный момент обрабатываем строку %a\n\r", &ConfigData[curr_pos]);
-          UnicodeSPrint(Log, 512, u"В данный момент обрабатываем строку %a\n\r", &ConfigData[curr_pos]);
-          LogToFile(LogFile, Log);
+          curr_pos += AsciiStrLen(&ConfigData[curr_pos]); //Skip the whole line
+          continue;
         }
         if (AsciiStrStr(&ConfigData[curr_pos], "End"))
         {
@@ -570,6 +593,13 @@ EFI_STATUS EFIAPI SREPEntry(
                 Add_OP_CODE(Start, Prev_OP);
                 continue;
             }
+            if (AsciiStrStr(&ConfigData[curr_pos], "Compatibility"))
+            {
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = COMPATIBILITY;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
+            }
             if (AsciiStrStr(&ConfigData[curr_pos], "Loaded"))
             {
                 Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
@@ -613,6 +643,13 @@ EFI_STATUS EFIAPI SREPEntry(
                 Add_OP_CODE(Start, Prev_OP);
                 continue;
             }
+            if (AsciiStrStr(&ConfigData[curr_pos], "UninstallProtocol"))
+            {
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = UNINSTALL_PROTOCOL;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
+            }
             if (AsciiStrStr(&ConfigData[curr_pos], "GetDB"))
             {
                 /*The Op turned out being useless
@@ -637,7 +674,7 @@ EFI_STATUS EFIAPI SREPEntry(
             }
             return EFI_INVALID_PARAMETER;
         }
-        if ((Prev_OP->ID == GET_DB || Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID || Prev_OP->ID == LOADED || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE) && Prev_OP->Name == 0)
+        if ((Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID || Prev_OP->ID == LOADED || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE || Prev_OP->ID == COMPATIBILITY || Prev_OP->ID == UNINSTALL_PROTOCOL) && Prev_OP->Name == 0)
         {
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"Found File %a\n\r", &ConfigData[curr_pos]);
@@ -730,7 +767,7 @@ EFI_STATUS EFIAPI SREPEntry(
                 }
                 Prev_OP->ARG3 = AsciiStrHexToUint64(&ConfigData[curr_pos]);
             }
-            if (Prev_OP->PatchType == PATTERN)  //Take offset from Prev_OP if it was PATTERN patch
+            if (Prev_OP->PatchType == PATTERN) //Take offset from Prev_OP if it was PATTERN patch
             {
                 Prev_OP->ARG3 = 0xFFFFFFFF;
                 Prev_OP->ARG6 = AsciiStrLen(&ConfigData[curr_pos]) / 2;
@@ -801,16 +838,23 @@ EFI_STATUS EFIAPI SREPEntry(
     dispatch
     */
 
-    //The actual execution
+    /*Start of the actual execution*/
     struct OP_DATA *next;
-    INT64 BaseOffset;
+    INT64 BaseOffset; //REL_POS and REL_NEG args rely on this
 
     UINT64 *Captures = { 0 }; //Represents found offsets, each offset can be up to 8 bytes
-    UINTN j = 0;
+    UINTN j = 0; //Stores Captures index
 
+    //Op GetDB vars
     BOOLEAN isDBThere = FALSE;
     UINTN DBSize = 0;
     UINTN DBPointer = 0;
+
+    //Op Compatibility var
+    EFI_GUID FilterProtocol = gEfiFirmwareVolume2ProtocolGuid;
+
+    //Op UninstallProtocol var
+    UINTN UninstallIndexes = 0;
 
     for (next = Start; next != NULL; next = next->next)
     {
@@ -818,6 +862,42 @@ EFI_STATUS EFIAPI SREPEntry(
         {
         case NO_OP:
             UnicodeSPrint(Log,512,u"NOP\n\r");
+            break;
+        case COMPATIBILITY:
+            if (ENG == TRUE) {
+              UnicodeSPrint(Log, 512, u"%a", "Executing Compatibility\n\r");
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"Выполняется аргумент Compatibility\n\r");
+              UnicodeSPrint(Log, 512, u"Выполняется аргумент Compatibility\n\r");
+              LogToFile(LogFile, Log);
+            }
+            if (AsciiStrCmp(next->Name, "DB9A1E3D-45CB-4ABB-853B-E5387FDB2E2D") && AsciiStrCmp(next->Name, "389F751F-1838-4388-8390-CD8154BD27F8"))
+            {
+              if (ENG == TRUE) { Print(L"Recommended protocols are:\nEFI_FIRMWARE_VOLUME_PROTOCOL_GUID(good for HP Insyde Rev.3)\n389F751F-1838-4388-8390-CD8154BD27F8\n\nEFI_LEGACY_BIOS_PROTOCOL_GUID(good for Aptio 4, Insyde Rev.3)\nDB9A1E3D-45CB-4ABB-853B-E5387FDB2E2D\n\n\r"); }
+              else { Print(L"Рекомендуемые протоколы:\nEFI_FIRMWARE_VOLUME_PROTOCOL_GUID(good for HP Insyde Rev.3)\n389F751F-1838-4388-8390-CD8154BD27F8\n\nEFI_LEGACY_BIOS_PROTOCOL_GUID(good for Aptio 4, Insyde Rev.3)\nDB9A1E3D-45CB-4ABB-853B-E5387FDB2E2D\n\n\r"); }
+            }
+            Status = AsciiStrToGuid(next->Name, &FilterProtocol); //Now search for everything with this protocol
+            if (EFI_ERROR(Status))
+            {
+              if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to GUID\n", next->Name); }
+              else { Print(L"Не удалось сконвертировать \"%a\" в GUID\n", next->Name); }
+              break;
+            }
+            if (ENG == TRUE) {
+              Print(L"Now filtering Handles by protocol: %g\n\r", FilterProtocol);
+              UnicodeSPrint(Log, 512, u"Now filtering Handles by protocol: %g\n\r", FilterProtocol);
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"Фильтрация по протоколу: %g\n\r", FilterProtocol);
+              UnicodeSPrint(Log, 512, u"Фильтрация по протоколу: %g\n\r", FilterProtocol);
+              LogToFile(LogFile, Log);
+            }
+            Status = EFI_NOT_FOUND; //This isn't an Op which loads Image, so it mustn't return Status from AsciiStrToGuid
             break;
         case LOADED:
             if (ENG == TRUE) {
@@ -830,7 +910,7 @@ EFI_STATUS EFIAPI SREPEntry(
               UnicodeSPrint(Log, 512, u"Выполняется аргумент Loaded\n\r");
               LogToFile(LogFile, Log);
             }
-            Status = FindLoadedImageFromName(ImageHandle, next->Name, &ImageInfo);
+            Status = FindLoadedImageFromName(ImageHandle, next->Name, &ImageInfo, FilterProtocol);
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"Loaded Image %r -> %x\n\r", Status, ImageInfo->ImageBase);
               LogToFile(LogFile, Log);
@@ -853,9 +933,10 @@ EFI_STATUS EFIAPI SREPEntry(
               UnicodeSPrint(Log, 512, u"Выполняется аргумент NonamePE\n\r");
               LogToFile(LogFile, Log);
             }
-            Status = FindLoadedImageFromGUID(ImageHandle, next->Name, &ImageInfo, EFI_SECTION_PE32);
+            Status = FindLoadedImageFromGUID(ImageHandle, next->Name, &ImageInfo, EFI_SECTION_PE32, FilterProtocol);
             if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Loaded Image %r -> %x\n\r", Status, ImageInfo->ImageBase);
+              Print(L"Search result: %r\n\r", Status);
+              UnicodeSPrint(Log, 512, u"Search result: %r\n\r", Status);
               LogToFile(LogFile, Log);
             }
             else
@@ -876,9 +957,10 @@ EFI_STATUS EFIAPI SREPEntry(
               UnicodeSPrint(Log, 512, u"Выполняется аргумент NonameTE\n\r");
               LogToFile(LogFile, Log);
             }
-            Status = FindLoadedImageFromGUID(ImageHandle, next->Name, &ImageInfo, EFI_SECTION_TE);
+            Status = FindLoadedImageFromGUID(ImageHandle, next->Name, &ImageInfo, EFI_SECTION_TE, FilterProtocol);
             if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Loaded Image %r -> %x\n\r", Status, ImageInfo->ImageBase);
+              Print(L"Search result: %r\n\r", Status);
+              UnicodeSPrint(Log, 512, u"Search result: %r\n\r", Status);
               LogToFile(LogFile, Log);
             }
             else
@@ -923,7 +1005,7 @@ EFI_STATUS EFIAPI SREPEntry(
               UnicodeSPrint(Log, 512, u"Выполняется аргумент LoadFromFV\n\r");
               LogToFile(LogFile, Log);
             }
-            Status = LoadFV(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32);
+            Status = LoadFV(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32, FilterProtocol);
             if (Status != EFI_SUCCESS) {
               if (ENG == TRUE) {
                 Print(L"Search result: %r\n\r", Status);
@@ -960,7 +1042,7 @@ EFI_STATUS EFIAPI SREPEntry(
               UnicodeSPrint(Log, 512, u"Выполняется аргумент LoadGUIDandSavePE\n\r");
               LogToFile(LogFile, Log);
             }
-            Status = LoadFVbyGUID(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32, SystemTable);
+            Status = LoadFVbyGUID(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32, SystemTable, FilterProtocol);
             if (Status != EFI_SUCCESS) {
               if (ENG == TRUE) {
                 Print(L"Search result: %r\n\r", Status);
@@ -990,11 +1072,19 @@ EFI_STATUS EFIAPI SREPEntry(
           /*
           * Reset to patch by ImageInfo if
           * Op has changed from GetDB
+          * Prev Op is not PATCH_FAST
           */
           if(Prev_OP->ID != GET_DB && Prev_OP->ID != PATCH_FAST){
             isDBThere = FALSE;
             DBPointer = 0;
           }
+
+          /*
+          * Reset ImageInfo if
+          * Prev Op has not found an Image
+          */
+          if (Status != EFI_SUCCESS) { FreePool(ImageInfo); goto PatchSearchFail; }
+
           if (!isDBThere) {
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing Fast Patch\n\rPatching Image Size %x:\n\r", ImageInfo->ImageSize);
@@ -1049,6 +1139,7 @@ EFI_STATUS EFIAPI SREPEntry(
                 }
                 if (next->ARG3 == 0xFFFFFFFF) //Stopped near overflow
                 {
+                  PatchSearchFail:
                   if (ENG == TRUE) {
                     UnicodeSPrint(Log, 512, u"%a", "No Pattern Found\n\r");
                     LogToFile(LogFile, Log);
@@ -1063,7 +1154,7 @@ EFI_STATUS EFIAPI SREPEntry(
                   break;
                 }
             }
-            if (next->PatchType == REL_POS_OFFSET)
+            if (next->PatchType == REL_POS_OFFSET && next->ARG3 != 0)
             {
               next->ARG3 = BaseOffset + next->ARG3;
               if (ENG != TRUE) {
@@ -1072,7 +1163,7 @@ EFI_STATUS EFIAPI SREPEntry(
                 LogToFile(LogFile, Log);
               }
             }
-            if (next->PatchType == REL_NEG_OFFSET)
+            if (next->PatchType == REL_NEG_OFFSET && next->ARG3 != 0)
             {
               next->ARG3 = BaseOffset - next->ARG3;
               if (ENG != TRUE) {
@@ -1130,6 +1221,12 @@ EFI_STATUS EFIAPI SREPEntry(
             }
             break;
         case PATCH:
+            /*
+            * Reset ImageInfo if
+            * Prev Op has not found an Image
+            */
+            if (Status != EFI_SUCCESS) { FreePool(ImageInfo); goto PatchSearchFail; }
+
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing Patch\n\rPatching Image Size %x:\n\r", ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
@@ -1161,7 +1258,7 @@ EFI_STATUS EFIAPI SREPEntry(
                 BOOLEAN CResult = FALSE, CResult2 = FALSE; //Comparison Result
                 for (UINTN i = 0; i < ImageInfo->ImageSize - next->ARG6; i += 1)
                 {
-                  Status = EFI_NOT_FOUND; //Reset status to stop saving offset to ARG3
+                  Status = EFI_WARN_RESET_REQUIRED; //Reset status to stop saving offset to ARG3
                   CResult2 = FALSE; //Reset result to keep RegexMatch n2 running
 
                   if (CResult == FALSE) {
@@ -1196,7 +1293,7 @@ EFI_STATUS EFIAPI SREPEntry(
                   }
 
                   if ((UINTN)next->ARG3 == i) {
-                    PrintDump(next->ARG6, (UINT8 *)ImageInfo->ImageBase + next->ARG3);  //The cause of PrintDump call edit: winraid.level1techs.com/t/89351/6
+                    PrintDump(next->ARG6, (UINT8 *)ImageInfo->ImageBase + next->ARG3); //The cause of PrintDump call edit: winraid.level1techs.com/t/89351/6
                   }
 
                   //Regex match with batch replacement. ARG 3 is used too widely, so I have to use RegexMatch again to fill Captures. CopyMem will be used again either.
@@ -1240,7 +1337,7 @@ EFI_STATUS EFIAPI SREPEntry(
                 break;
                 }
             }
-            if (next->PatchType == REL_POS_OFFSET)
+            if (next->PatchType == REL_POS_OFFSET && next->ARG3 != 0)
             {
                 next->ARG3 = BaseOffset + next->ARG3;
                 if (ENG != TRUE) {
@@ -1249,7 +1346,7 @@ EFI_STATUS EFIAPI SREPEntry(
                   LogToFile(LogFile, Log);
                 }
             }
-            if (next->PatchType == REL_NEG_OFFSET)
+            if (next->PatchType == REL_NEG_OFFSET && next->ARG3 != 0)
             {
                 next->ARG3 = BaseOffset - next->ARG3;
                 if (ENG != TRUE) {
@@ -1341,6 +1438,44 @@ EFI_STATUS EFIAPI SREPEntry(
             gBS->Stall(3000000);
             Exec(&AppImageHandle);
             break;
+        case UNINSTALL_PROTOCOL:
+            if (ENG == TRUE) {
+              UnicodeSPrint(Log, 512, u"%a", "Executing UninstallProtocol\n\r");
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"Выполняется аргумент UninstallProtocol\n\r");
+              UnicodeSPrint(Log, 512, u"Выполняется аргумент UninstallProtocol\n\r");
+              LogToFile(LogFile, Log);
+            }
+            Status = UninstallProtocol(next->Name, UninstallIndexes);
+            if (Status != EFI_SUCCESS) {
+              if (ENG == TRUE) {
+                Print(L"Stop cause: %r\n\r", Status);
+                UnicodeSPrint(Log, 512, u"Stop cause: %r\n\r", Status);
+                LogToFile(LogFile, Log);
+              }
+              else
+              {
+                Print(L"Причина остановки: %r\n\r", Status);
+                UnicodeSPrint(Log, 512, u"Причина остановки: %r\n\r", Status);
+                LogToFile(LogFile, Log);
+              }
+              break;
+            };
+            if (ENG == TRUE) {
+              Print(L"Protocol uninstalled\n\r");
+              UnicodeSPrint(Log, 512, u"Protocol uninstalled from %d handles\n\r", UninstallIndexes + 1);
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"Протокол удален\n\r");
+              UnicodeSPrint(Log, 512, u"Протокол удален из %d дескрипторов\n\r", UninstallIndexes + 1);
+              LogToFile(LogFile, Log);
+            }
+            break;
         case GET_DB:
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing GetDB\n\r");
@@ -1381,6 +1516,7 @@ EFI_STATUS EFIAPI SREPEntry(
               LogToFile(LogFile, Log);
             }
             isDBThere = TRUE;
+            Status = EFI_SUCCESS;
             break;
         default:
             break;

@@ -1,7 +1,13 @@
 ﻿#include "Opcode.h"
 #include "Utility.h"
 
-EFI_STATUS FindLoadedImageFromName(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROTOCOL **ImageInfo)
+EFI_STATUS
+FindLoadedImageFromName(
+  EFI_HANDLE ImageHandle,
+  CHAR8 *FileName,
+  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  EFI_GUID FilterProtocol
+)
 {
     EFI_STATUS Status;
     UINTN HandleSize = 0;
@@ -22,7 +28,7 @@ EFI_STATUS FindLoadedImageFromName(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_
         Status = gBS->HandleProtocol(Handles[i], &gEfiLoadedImageProtocolGuid, (VOID **)ImageInfo); //Process every found handle
         if (Status == EFI_SUCCESS)
         {
-            CHAR16 *String = FindLoadedImageFileName(*ImageInfo);
+            CHAR16 *String = FindLoadedImageFileName(*ImageInfo, FilterProtocol);
             if (String != NULL)
             {
                 if (StrCmp(FileName16, String) == 0)  //If SUCCESS, compare the handle' name with the one specified in cfg
@@ -37,18 +43,31 @@ EFI_STATUS FindLoadedImageFromName(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_
     return EFI_NOT_FOUND;
 }
 
-EFI_STATUS FindLoadedImageFromGUID(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROTOCOL **ImageInfo, EFI_SECTION_TYPE Section_Type)
+EFI_STATUS
+FindLoadedImageFromGUID(
+  EFI_HANDLE ImageHandle,
+  CHAR8 *FileName,
+  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  EFI_SECTION_TYPE Section_Type,
+  EFI_GUID FilterProtocol
+)
 {
     EFI_STATUS Status;
     UINTN HandleSize = 0;
     EFI_HANDLE *Handles;
 
-    EFI_GUID GUID = { 0 };  //Initialize beforehand
-    AsciiStrToGuid(FileName, &GUID);
+    EFI_GUID GUID = { 0 }; //Initialize beforehand
+    Status = AsciiStrToGuid(FileName, &GUID);
+    if (EFI_ERROR(Status))
+    {
+      if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to GUID\n", FileName); }
+      else { Print(L"Не удалось сконвертировать \"%a\" в GUID\n", FileName); }
+      return Status;
+    }
 
     UINT8 *Buffer = NULL;
     UINTN BufferSize = 0;
-    Status = LocateAndLoadFvFromGuid(GUID, Section_Type, &Buffer, &BufferSize); //Pass the converted guid to Utility to get the target BufferSize
+    Status = LocateAndLoadFvFromGuid(GUID, Section_Type, &Buffer, &BufferSize, FilterProtocol); //Pass the converted guid to Utility to get the target BufferSize
 
     Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &HandleSize, NULL);
     if (Status == EFI_BUFFER_TOO_SMALL)
@@ -71,7 +90,7 @@ EFI_STATUS FindLoadedImageFromGUID(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_
         Status = gBS->HandleProtocol(Handles[i], &gEfiLoadedImageProtocolGuid, (VOID **)ImageInfo); //Process every found handle
         if (Status == EFI_SUCCESS)
         {
-            UINTN FoundSize = FindLoadedImageBufferSize(*ImageInfo); //Read ImageInfo, so we get BufferSize from Handles[i]
+            UINTN FoundSize = FindLoadedImageBufferSize(*ImageInfo, FilterProtocol); //Read ImageInfo, so we get BufferSize from Handles[i]
 
             /*Debug
             Print(L"BufSize from Utility.c: %d\n\r", FoundSize);
@@ -92,7 +111,13 @@ EFI_STATUS FindLoadedImageFromGUID(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_
     return EFI_NOT_FOUND;
 }
 
-EFI_STATUS LoadFS(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROTOCOL **ImageInfo, EFI_HANDLE *AppImageHandle)
+EFI_STATUS
+LoadFS(
+  EFI_HANDLE ImageHandle,
+  CHAR8 *FileName,
+  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  EFI_HANDLE *AppImageHandle
+)
 {
     //UINTN ExitDataSize;
     UINTN NumHandles;
@@ -105,8 +130,8 @@ EFI_STATUS LoadFS(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROT
 
     if (Status != EFI_SUCCESS)
     {
-        if (ENG == TRUE) { Print(L"Could not find handles - %r\n", Status); }
-        else { Print(L"Не удалось найти ни одного дескриптора с\n поддержкой EfiSimpleFileSystemProtocol"); }
+        if (ENG == TRUE) { Print(L"Could not find any handle on EfiSimpleFileSystemProtocol\n"); }
+        else { Print(L"Не удалось найти ни одного дескриптора с\n поддержкой EfiSimpleFileSystemProtocol\n"); }
         return Status;
     }
     if (ENG == TRUE) { Print(L"No of Handle - %d\n", NumHandles); }
@@ -127,8 +152,7 @@ EFI_STATUS LoadFS(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROT
         CHAR16 FileName16[255] = {0};
         UnicodeSPrint(FileName16, sizeof(FileName16), L"%a", FileName);
         FilePath = FileDevicePath(SFS_Handles[Index], FileName16);
-        Status = gBS->LoadImage(FALSE, ImageHandle, FilePath, (VOID *)NULL, 0,
-                                AppImageHandle);
+        Status = gBS->LoadImage(FALSE, ImageHandle, FilePath, (VOID *)NULL, 0, AppImageHandle);
 
         if (Status != EFI_SUCCESS)
         {
@@ -149,7 +173,15 @@ EFI_STATUS LoadFS(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROT
     return Status;
 }
 
-EFI_STATUS LoadFV(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROTOCOL **ImageInfo, EFI_HANDLE *AppImageHandle, EFI_SECTION_TYPE Section_Type)
+EFI_STATUS
+LoadFV(
+  EFI_HANDLE ImageHandle,
+  CHAR8 *FileName,
+  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  EFI_HANDLE *AppImageHandle,
+  EFI_SECTION_TYPE Section_Type,
+  EFI_GUID FilterProtocol
+)
 {
     EFI_STATUS Status = EFI_SUCCESS;
 
@@ -158,7 +190,7 @@ EFI_STATUS LoadFV(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROT
 
     UINT8 *Buffer = NULL;
     UINTN BufferSize = 0;
-    Status = LocateAndLoadFvFromName(FileName16, Section_Type, &Buffer, &BufferSize);
+    Status = LocateAndLoadFvFromName(FileName16, Section_Type, &Buffer, &BufferSize, FilterProtocol);
 
     Status = gBS->LoadImage(FALSE, ImageHandle, (VOID *)NULL, Buffer, BufferSize, AppImageHandle);
     if (Buffer != NULL)
@@ -178,7 +210,16 @@ EFI_STATUS LoadFV(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROT
     return Status;
 };
 
-EFI_STATUS LoadFVbyGUID(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAGE_PROTOCOL **ImageInfo, EFI_HANDLE *AppImageHandle, EFI_SECTION_TYPE Section_Type, EFI_SYSTEM_TABLE *SystemTable)
+EFI_STATUS
+LoadFVbyGUID(
+  EFI_HANDLE ImageHandle,
+  CHAR8 *FileName,
+  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  EFI_HANDLE *AppImageHandle,
+  EFI_SECTION_TYPE Section_Type,
+  EFI_SYSTEM_TABLE *SystemTable,
+  EFI_GUID FilterProtocol
+)
 {
   EFI_STATUS Status = EFI_SUCCESS;
   EFI_HANDLE_PROTOCOL HandleProtocol;
@@ -192,17 +233,23 @@ EFI_STATUS LoadFVbyGUID(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAG
   HandleProtocol(LoadedImage->DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (void**)&FileSystem);
   FileSystem->OpenVolume(FileSystem, &Root);
 
-  EFI_GUID GUID = { 0 };  //Initialize beforehand
-  AsciiStrToGuid(FileName, &GUID);
+  EFI_GUID GUID = { 0 };
+  Status = AsciiStrToGuid(FileName, &GUID);
+  if (EFI_ERROR(Status))
+  {
+    if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to GUID\n", FileName); }
+    else { Print(L"Не удалось сконвертировать \"%a\" в GUID\n", FileName); }
+    return Status;
+  }
 
   /* Debug
-  Print(L"GUID from OpCode.c raw: %s\n\r", Guid);
+  Print(L"GUID from OpCode.c raw: %s\n\r", FileName);
   Print(L"GUID from OpCode.c converted: %g\n\r", GUID);
   */
 
   UINT8 *Buffer = NULL;
   UINTN BufferSize = 0;
-  Status = LocateAndLoadFvFromGuid(GUID, Section_Type, &Buffer, &BufferSize); //Pass the converted guid to Utility
+  Status = LocateAndLoadFvFromGuid(GUID, Section_Type, &Buffer, &BufferSize, FilterProtocol); //Pass the converted guid to Utility
 
   //Dumping section
   if (Buffer == NULL) {
@@ -238,7 +285,8 @@ EFI_STATUS LoadFVbyGUID(EFI_HANDLE ImageHandle, CHAR8 *FileName, EFI_LOADED_IMAG
   return Status;
 };
 
-EFI_STATUS Exec(EFI_HANDLE *AppImageHandle)
+EFI_STATUS
+Exec(EFI_HANDLE *AppImageHandle)
 {
     UINTN ExitDataSize;
     EFI_STATUS Status = gBS->StartImage(*AppImageHandle, &ExitDataSize, (CHAR16 **)NULL);
@@ -247,7 +295,8 @@ EFI_STATUS Exec(EFI_HANDLE *AppImageHandle)
     return Status;
 }
 
-UINTN GetAptioHiiDB(BOOLEAN BuffersizeOrPointer)
+UINTN
+GetAptioHiiDB(BOOLEAN BuffersizeOrPointer)
 {
   typedef struct {
     UINT32 DataSize;
@@ -284,4 +333,59 @@ UINTN GetAptioHiiDB(BOOLEAN BuffersizeOrPointer)
       return Result;
     }
     return 0;
+}
+
+EFI_STATUS
+UninstallProtocol(CHAR8 *FileName, UINTN Indexes)
+{
+   EFI_STATUS Status;
+   EFI_HANDLE *Handles;
+   UINTN HandleSize = 0;
+   VOID *ProtocolInterface;
+
+   EFI_GUID GUID = { 0 };
+   Status = AsciiStrToGuid(FileName, &GUID);
+   if (EFI_ERROR(Status))
+   {
+     if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to GUID\n", FileName); }
+     else { Print(L"Не удалось сконвертировать \"%a\" в GUID\n", FileName); }
+     return Status;
+   }
+
+   Status = gBS->LocateHandleBuffer(ByProtocol, &GUID, NULL, &HandleSize, &Handles);
+
+  if (EFI_ERROR(Status))
+  {
+    if (ENG == TRUE) { Print(L"Сould not find any handle with the specified protocol\n"); }
+    else { Print(L"Не удалось найти ни одного дескриптора с указанным протоколом\n"); }
+    return Status;
+  } 
+  
+  for(UINTN i = 0; i < HandleSize ; i += 1)
+  {
+    ProtocolInterface = NULL;
+    Status = gBS->HandleProtocol(Handles[i],
+                                 &GUID,
+                                 (VOID **)&ProtocolInterface);
+
+    if (EFI_ERROR(Status))
+    {
+      if (ENG == TRUE) { Print(L"Failed to retrieve handle %d's protocol interface: %r\n", i, Status); }
+      else { Print(L"Не удалось получить смещение указателя на протокол от дескриптора %d: %r\n", i, Status); }
+      continue;
+    }
+
+    Status = gBS->UninstallProtocolInterface(Handles[i],
+                                             &GUID, 
+                                             ProtocolInterface);
+
+    if (EFI_ERROR(Status))
+    {
+      if (ENG == TRUE) { Print(L"%r - Could not uninstall protocol: %g,\nfrom handle %d by offset pointer 0x%x\n", Status, GUID, i, ProtocolInterface); }
+      else { Print(L"%r - Не удалось удалить протокол: %g,\nу дескриптора %d по смещению указателя 0x%x\n", Status, GUID, i, ProtocolInterface); }
+      continue;
+    }
+    Indexes += 1;
+  }
+  return Status;
 }

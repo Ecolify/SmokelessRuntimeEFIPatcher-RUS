@@ -47,6 +47,7 @@
   gEfiHiiPopupProtocolGuid                      ## CONSUMES
   gEdkiiFormDisplayEngineProtocolGuid           ## CONSUMES
   gEfiRegularExpressionProtocolGuid             ## CONSUMES
+  ## gEfiFirmwareVolumeProtocolGuid
 [Guids]
   gEfiAcpiTableGuid
   gEfiAcpi20TableGuid
