@@ -185,7 +185,7 @@ LocateAndLoadFvFromName(
     UINTN Index;
     EFI_FIRMWARE_VOLUME2_PROTOCOL *FvInstance;
 
-    // FvStatus = 0; // Leftover from Smokeless
+    // FvStatus = 0; // Leftover from Smokeless, the function is a copy of LocateFvInstanceWithTables from AcpiPlatform.c
 
     //
     // Locate protocol.
@@ -204,9 +204,6 @@ LocateAndLoadFvFromName(
         return Status;
     }
 
-    //
-    // Looking for FV with ACPI storage file
-    //
     if (ENG == TRUE) { Print(L"Found %d Instances\n\r", NumberOfHandles); }
     else
     {
@@ -238,7 +235,7 @@ LocateAndLoadFvFromName(
             Status = FvInstance->GetNextFile(FvInstance, Keys, &FileType, &NameGuid, &FileAttributes, &FileSize);
             if (Status != EFI_SUCCESS)
             {
-              if (ENG == TRUE) { Print(L"Breaking Cause %r\n\r", Status); }
+              if (ENG == TRUE) { Print(L"Breaking cause %r\n\r", Status); }
                 else
                 {
                   Print(L"Причина остановки итерации: %r\n\r", Status);
@@ -258,7 +255,7 @@ LocateAndLoadFvFromName(
                 Print(L"GUID: %g, Размер: %d, Имя: %s, Тип: %d\n\r", NameGuid, FileSize, String, FileType);
               }
                 Status = FvInstance->ReadSection(FvInstance, &NameGuid, Section_Type, 0,(VOID **) Buffer, BufferSize, &AuthenticationStatus);
-                if (ENG == TRUE) { Print(L"Result Cause %r\n\r", Status); }
+                if (ENG == TRUE) { Print(L"Result %r\n\r", Status); }
                 else
                 {
                   Print(L"Результат %r\n\r", Status);
@@ -304,9 +301,6 @@ LocateAndLoadFvFromGuid(
     return Status;
   }
 
-  //
-  // Looking for FV with ACPI storage file
-  //
   if (ENG == TRUE) { Print(L"Found %d Instances\n\r", NumberOfHandles); }
   else
   {
@@ -351,7 +345,7 @@ LocateAndLoadFvFromGuid(
       String = NULL;
       Status = FvInstance->ReadSection(FvInstance, &NameGuid, EFI_SECTION_USER_INTERFACE, 0, &String, &StringSize, &AuthenticationStatus);
       /* Debug
-      //if (ENG != TRUE) Print(L"Current GUID: %g\n\r", NameGuid);      //Current processing guid per While iteration
+      if (ENG != TRUE) Print(L"Current GUID: %g\n\r", NameGuid);      //Current processing guid per While iteration
       */
       if (CompareGuid(&GUID16, &NameGuid) == 1) //I can do via "&"
       {
@@ -421,7 +415,6 @@ RegexMatch(
 
   return Status;
 }
-
 
 //Unused
 UINT8 *

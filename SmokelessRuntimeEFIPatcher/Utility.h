@@ -28,6 +28,11 @@
 #include <Library/HiiLib.h>                       //Needed for fonts
 #include <Library/UefiRuntimeServicesTableLib.h>  //Needed for gRT
 
+//C2220 suppression due to log filename issues
+#pragma warning(disable:4459)
+#pragma warning(disable:4456)
+#pragma warning(disable:4244)
+
 //Set default lang Rus
 BOOLEAN ENG = FALSE;
 

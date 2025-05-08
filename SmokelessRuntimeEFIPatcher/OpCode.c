@@ -295,46 +295,6 @@ Exec(EFI_HANDLE *AppImageHandle)
     return Status;
 }
 
-UINTN
-GetAptioHiiDB(BOOLEAN BuffersizeOrPointer)
-{
-  typedef struct {
-    UINT32 DataSize;
-    UINT32 DataPointer;
-  } HiiDbBlock_DATA;
-
-    EFI_STATUS Status;
-    EFI_GUID ExportDatabaseGuid = { 0x1b838190, 0x4625, 0x4ead, {0xab, 0xc9, 0xcd, 0x5e, 0x6a, 0xf1, 0x8f, 0xe0} };
-    UINTN Size = 8;
-    HiiDbBlock_DATA HiiDB; //The whole var is 8 bytes, I save it into 2 by 4
-    UINTN BufferSize = 0, Pointer = 0, Result = 0;
-
-    Status = gRT->GetVariable(
-        L"HiiDB",
-        &ExportDatabaseGuid,
-        NULL,
-        &Size,
-        &HiiDB);
-
-    if (Status == EFI_SUCCESS && Size != 0)
-    {
-      //Get buffers from pointer, source called with &
-      CopyMem(&BufferSize, &HiiDB.DataSize, Size / 2);
-      CopyMem(&Pointer, &HiiDB.DataPointer, Size / 2);
-
-      /*Debug
-      Print(L"\nPart1:\n");
-      Print(L"%x\n", BufferSize);
-      Print(L"\nPart2:\n");
-      Print(L"%x\n", Pointer);
-      */
-
-      BuffersizeOrPointer ? (Result = Pointer) : (Result = BufferSize);
-      return Result;
-    }
-    return 0;
-}
-
 EFI_STATUS
 UninstallProtocol(CHAR8 *FileName, UINTN Indexes)
 {
@@ -388,4 +348,150 @@ UninstallProtocol(CHAR8 *FileName, UINTN Indexes)
     Indexes += 1;
   }
   return Status;
+}
+
+EFI_STATUS
+UpdateHiiDB(CHAR8 *FileName)
+{
+  EFI_STATUS Status;
+
+  /*
+  typedef struct {
+    UINT8 byte1;
+    UINT8 byte2;
+    UINT8 byte3;
+    UINT8 byte4;
+    UINT8 byte5;
+    UINT8 byte6;
+    UINT8 byte7;
+    UINT8 byte8;
+    UINT8 byte9;
+    UINT8 byte10;
+    UINT8 byte11;
+    UINT8 byte12;
+    UINT8 byte13;
+    UINT8 byte14;
+    UINT8 byte15;
+    UINT8 byte16;
+  } RawOpCodeData;
+  */
+
+   //RawOpCodeData StaticValues = { 0x0F, 0x0F, 0x0E, 0x01, 0x0F, 0x01, 0x0A, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x54, 0x27 };
+   //UINT8 *RawOpCodeBuffer = (UINT8 *)&StaticValues;
+   //UINTN RawOpCodeBufferSize = 0xF;
+
+   if (AsciiStrLen(FileName) > 4)
+   {
+     if (ENG == TRUE) { Print(L"Can't convert \"%a\" to EFI_FORM_ID\n", FileName); }
+     else { Print(L"Не удастся сконвертировать \"%a\" в EFI_FORM_ID\n", FileName); }
+     return EFI_UNSUPPORTED;
+   }
+   CHAR16 FileName16[255] = { 0 };
+   UnicodeSPrint(FileName16, sizeof(FileName16), L"%a", FileName);
+
+   UINTN FormIDUintn = { 0 };
+   Status = StrHexToUintnS(FileName16, NULL, &FormIDUintn);
+   if (EFI_ERROR(Status))
+   {
+     if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to UINT\n", FileName); }
+     else { Print(L"Не удалось сконвертировать \"%a\" в UINT\n", FileName); }
+     return Status;
+   }
+
+   EFI_FORM_ID FormID = (UINT16)FormIDUintn;
+   EFI_HII_HANDLE *HiiHandles = HiiGetHiiHandles(NULL);
+
+  if (HiiHandles == NULL)
+  {
+    if (ENG == TRUE) { Print(L"Сould not retrieve any HII handle\n"); }
+    else { Print(L"Не удалось получить ни одного дескриптора\n"); }
+    return EFI_NOT_FOUND;
+  } 
+
+  VOID *StartOpCodeHandle = HiiAllocateOpCodeHandle();
+
+  if (StartOpCodeHandle == NULL)
+  {
+    if (ENG == TRUE) { Print(L"Not enough resources\n"); }
+    else { Print(L"Not enough resources\n"); }
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  //EFI_IFR_REF *PointerStartOpCode = (EFI_IFR_REF *)HiiCreateRawOpCodes(StartOpCodeHandle, RawOpCodeBuffer, RawOpCodeBufferSize);
+  EFI_IFR_END *PointerStartOpCode = (EFI_IFR_END *)HiiCreateEndOpCode(StartOpCodeHandle); //[29 02] can be met anywhere
+
+  if (PointerStartOpCode == NULL)
+  {
+    if (ENG == TRUE) { Print(L"Not enough space in the buffer\n"); }
+    else { Print(L"Not enough space in the buffer\n"); }
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  //Debug
+  //Print(L"Header/FormId %x / %x\n", PointerStartOpCode->Header, PointerStartOpCode->FormId);
+  //Print(L"Header %x\n", PointerStartOpCode->Header);
+  //EFI_GUID AptioS = { 0x4A10597B, 0x0DC0, 0x5841, {0x87, 0xFF, 0xF0, 0x4D, 0x63, 0x96, 0xA9, 0x15} };
+  //EFI_GUID InsydeS = { 0xF4274AA0, 0x00DF, 0x424D, {0xB5, 0x52, 0x39, 0x51, 0x13, 0x02, 0x11, 0x3D} };
+
+  if (ENG == TRUE) { Print(L"Hangs means could not update\n"); }
+  else { Print(L"Зависание означает что обновить не удалось\n"); }
+  Status = EFI_NOT_FOUND;
+  for(UINT8 i = 0; i < 255; i += 1)
+  {
+    Status = HiiUpdateForm(HiiHandles[i],
+                           NULL,              //Try updating all
+                           FormID,
+                           StartOpCodeHandle, //Out of res cuz of this
+                           NULL);
+
+    if (Status == EFI_SUCCESS)
+    {
+      if (ENG == TRUE) { Print(L"Successfully updated Form 0x%x in %d tries\n", FormID, i); }
+      else { Print(L"Удалось обновить форму 0x%x c попытки %d\n", FormID, i); }
+      break;
+    }
+  }
+  HiiFreeOpCodeHandle(StartOpCodeHandle);
+  FreePool(PointerStartOpCode);
+  return Status;
+}
+
+UINTN
+GetAptioHiiDB(BOOLEAN BuffersizeOrPointer)
+{
+  typedef struct {
+    UINT32 DataSize;
+    UINT32 DataPointer;
+  } HiiDbBlock_DATA;
+
+    EFI_STATUS Status;
+    EFI_GUID ExportDatabaseGuid = { 0x1b838190, 0x4625, 0x4ead, {0xab, 0xc9, 0xcd, 0x5e, 0x6a, 0xf1, 0x8f, 0xe0} };
+    UINTN Size = 8;
+    HiiDbBlock_DATA HiiDB; //The whole var is 8 bytes, I save it into 2 by 4
+    UINTN BufferSize = 0, Pointer = 0, Result = 0;
+
+    Status = gRT->GetVariable(
+        L"HiiDB",
+        &ExportDatabaseGuid,
+        NULL,
+        &Size,
+        &HiiDB);
+
+    if (Status == EFI_SUCCESS && Size != 0)
+    {
+      //Get buffers from pointer, source called with &
+      CopyMem(&BufferSize, &HiiDB.DataSize, Size / 2);
+      CopyMem(&Pointer, &HiiDB.DataPointer, Size / 2);
+
+      /*Debug
+      Print(L"\nPart1:\n");
+      Print(L"%x\n", BufferSize);
+      Print(L"\nPart2:\n");
+      Print(L"%x\n", Pointer);
+      */
+
+      BuffersizeOrPointer ? (Result = Pointer) : (Result = BufferSize);
+      return Result;
+    }
+    return 0;
 }

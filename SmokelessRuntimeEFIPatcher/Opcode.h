@@ -74,6 +74,11 @@ UninstallProtocol(
   UINTN Indexes
 );
 
+EFI_STATUS
+UpdateHiiDB(
+  CHAR8 *FileName
+);
+
 UINTN GetAptioHiiDB(
   BOOLEAN BuffersizeOrPointer
 );

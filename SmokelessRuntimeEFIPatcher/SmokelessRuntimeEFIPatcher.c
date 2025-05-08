@@ -3,7 +3,7 @@
 #include "Opcode.h"
 
 //Specify app version
-#define SREP_VERSION L"0.1.7 RUS"
+#define SREP_VERSION L"0.1.8rc1 RUS"
 
 //Get font data having external linkage
 extern EFI_WIDE_GLYPH gSimpleFontWideGlyphData[];
@@ -40,6 +40,7 @@ enum OPCODE
     PATCH_FAST,
     EXEC,
     UNINSTALL_PROTOCOL,
+    UPDATE_DB,
     GET_DB
 };
 
@@ -74,11 +75,6 @@ typedef struct {
   UINTN Height;
   UINTN PixelsPerScanLine;
 } FRAME_BUFFER;
-
-//C2220 suppression due to log filename issues
-#pragma warning(disable:4459)
-#pragma warning(disable:4456)
-#pragma warning(disable:4244)
 
 //Writes string from the buffer to SREP.log
 VOID
@@ -650,17 +646,29 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
               Add_OP_CODE(Start, Prev_OP);
               continue;
             }
-            if (AsciiStrStr(&ConfigData[curr_pos], "GetDB"))
+            if (AsciiStrStr(&ConfigData[curr_pos], "UpdateDB"))
             {
-                /*The Op turned out being useless
-                Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-                Prev_OP->ID = GET_DB;
-                Add_OP_CODE(Start, Prev_OP);
-                */
-                if (ENG == TRUE) { Print(L"I commented out this Op, you can't use it\n\r"); }
-                else
-                { Print(L"Я закомментировал эту команду, сейчас она не сработает\n\r"); }
-                continue;
+              /*
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = UPDATE_DB;
+              Add_OP_CODE(Start, Prev_OP);
+              */
+              if (ENG == TRUE) { Print(L"I commented out this Op, you can't use it\n\r"); }
+              else
+              { Print(L"Я закомментировал эту команду, сейчас она не сработает\n\r"); }
+              continue;
+            }
+            if (AsciiStrStr(&ConfigData[curr_pos], "GetAptioDB"))
+            {
+              /*
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = GET_DB;
+              Add_OP_CODE(Start, Prev_OP);
+              */
+              if (ENG == TRUE) { Print(L"I commented out this Op, you can't use it\n\r"); }
+              else
+              { Print(L"Я закомментировал эту команду, сейчас она не сработает\n\r"); }
+              continue;
             }
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"Command %a Invalid\n\r", &ConfigData[curr_pos]);
@@ -674,7 +682,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             return EFI_INVALID_PARAMETER;
         }
-        if ((Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID || Prev_OP->ID == LOADED || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE || Prev_OP->ID == COMPATIBILITY || Prev_OP->ID == UNINSTALL_PROTOCOL) && Prev_OP->Name == 0)
+        if ((Prev_OP->ID == COMPATIBILITY || Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID || Prev_OP->ID == LOADED || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE || Prev_OP->ID == UNINSTALL_PROTOCOL || Prev_OP->ID == UPDATE_DB) && Prev_OP->Name == 0)
         {
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"Found File %a\n\r", &ConfigData[curr_pos]);
@@ -845,7 +853,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
     UINT64 *Captures = { 0 }; //Represents found offsets, each offset can be up to 8 bytes
     UINTN j = 0; //Stores Captures index
 
-    //Op GetDB vars
+    //Op GetAptioDB vars
     BOOLEAN isDBThere = FALSE;
     UINTN DBSize = 0;
     UINTN DBPointer = 0;
@@ -1069,21 +1077,23 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             break;
         case PATCH_FAST:
+
           /*
           * Reset to patch by ImageInfo if
-          * Op has changed from GetDB
-          * Prev Op is not PATCH_FAST
+          * Op has changed from GET_DB with success
           */
-          if(Prev_OP->ID != GET_DB && Prev_OP->ID != PATCH_FAST){
+          if(Status == EFI_SUCCESS){
             isDBThere = FALSE;
             DBPointer = 0;
+            Print(L"Reached there\n");
           }
 
           /*
           * Reset ImageInfo if
           * Prev Op has not found an Image
+          * Prev Op is not GET_DB
           */
-          if (Status != EFI_SUCCESS) { FreePool(ImageInfo); goto PatchSearchFail; }
+          if (Status != EFI_SUCCESS && isDBThere == FALSE) { FreePool(ImageInfo); goto PatchSearchFail; }
 
           if (!isDBThere) {
             if (ENG == TRUE) {
@@ -1452,8 +1462,8 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             Status = UninstallProtocol(next->Name, UninstallIndexes);
             if (Status != EFI_SUCCESS) {
               if (ENG == TRUE) {
-                Print(L"Stop cause: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Stop cause: %r\n\r", Status);
+                Print(L"Breaking cause: %r\n\r", Status);
+                UnicodeSPrint(Log, 512, u"Breaking cause: %r\n\r", Status);
                 LogToFile(LogFile, Log);
               }
               else
@@ -1466,25 +1476,63 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             };
             if (ENG == TRUE) {
               Print(L"Protocol uninstalled\n\r");
-              UnicodeSPrint(Log, 512, u"Protocol uninstalled from %d handles\n\r", UninstallIndexes + 1);
+              UnicodeSPrint(Log, 512, u"Protocol uninstalled from %d handles\n\r", UninstallIndexes);
               LogToFile(LogFile, Log);
             }
             else
             {
               Print(L"Протокол удален\n\r");
-              UnicodeSPrint(Log, 512, u"Протокол удален из %d дескрипторов\n\r", UninstallIndexes + 1);
+              UnicodeSPrint(Log, 512, u"Протокол удален из %d дескрипторов\n\r", UninstallIndexes);
+              LogToFile(LogFile, Log);
+            }
+            break;
+        case UPDATE_DB:
+            if (ENG == TRUE) {
+              UnicodeSPrint(Log, 512, u"%a", "Executing UpdateDB\n\r");
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"Выполняется аргумент UpdateDB\n\r");
+              UnicodeSPrint(Log, 512, u"Выполняется аргумент UpdateDB\n\r");
+              LogToFile(LogFile, Log);
+            }
+            Status = UpdateHiiDB(next->Name);
+            if (Status != EFI_SUCCESS) {
+              if (ENG == TRUE) {
+                Print(L"Breaking cause: %r\n\r", Status);
+                UnicodeSPrint(Log, 512, u"Breaking cause: %r\n\r", Status);
+                LogToFile(LogFile, Log);
+              }
+              else
+              {
+                Print(L"Причина остановки: %r\n\r", Status);
+                UnicodeSPrint(Log, 512, u"Причина остановки: %r\n\r", Status);
+                LogToFile(LogFile, Log);
+              }
+              break;
+            };
+            if (ENG == TRUE) {
+              Print(L"DB updated\n\r");
+              UnicodeSPrint(Log, 512, u"DB updated\n\r");
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"DB обновлена\n\r");
+              UnicodeSPrint(Log, 512, u"DB обновлена\n\r");
               LogToFile(LogFile, Log);
             }
             break;
         case GET_DB:
             if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing GetDB\n\r");
+              UnicodeSPrint(Log, 512, u"%a", "Executing GetAptioDB\n\r");
               LogToFile(LogFile, Log);
             }
             else
             {
-              Print(L"Выполняется аргумент GetDB\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент GetDB\n\r");
+              Print(L"Выполняется аргумент GetAptioDB\n\r");
+              UnicodeSPrint(Log, 512, u"Выполняется аргумент GetAptioDB\n\r");
               LogToFile(LogFile, Log);
             }
             DBSize = GetAptioHiiDB( 0 ); DBPointer = GetAptioHiiDB( 1 );
@@ -1502,6 +1550,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
                 LogToFile(LogFile, Log);
               }
               isDBThere = FALSE;
+              Status = EFI_NOT_FOUND;
               break;
             }
             if (ENG == TRUE) {
@@ -1516,7 +1565,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
               LogToFile(LogFile, Log);
             }
             isDBThere = TRUE;
-            Status = EFI_SUCCESS;
+            Status = EFI_NOT_FOUND; //This is ok
             break;
         default:
             break;
