@@ -6,7 +6,7 @@
 * Появился Рус перевод для сообщений на экране и в логе, вывод в лог был приспособлен для кодировки Unicode. Сами сообщения учащены, чтобы прогресс выполнения лучше отслеживался, и у пользователя не возникало мысли что программа зависла.
   </br>Переключение на Анг доступно через аргумент ENG (например, "SREP.efi ENG"). Но, как можно догадаться, тогда вызов SREP нужно осуществить через командную строку в Shell. Разрешается передавать параметр ENG в .nsh.
   </br>Либо можно скомпилировать патчер заново, с BOOLEAN ENG = TRUE.
-* Добавил 5 новых команд: LoadGUIDandSavePE, NonamePE, NonameTE, UninstallProtocol, Compatibility.
+* Добавил 6 новых команд: NonamePE, NonameTE, LoadGUIDandSavePE, LoadGUIDandSaveFreeform, UninstallProtocol, Compatibility.
   </br>Могут быть полезны для применения в особых случаях. В каких - будет далее.
 * Добавил поддержку абстрактных знаков (regex) для использования в строке шаблона. Классы знаков доступны [по ссылке](https://gist.github.com/kaigouthro/e8bad6a2c8df6ff13b8716027a172dc0#3-character-types).
 * По умолчанию, комбинация Patch - Pattern теперь заменяет все вхождения, а не только первое, которые соответствуют указанному шаблону.
@@ -20,7 +20,7 @@
   </details>
 
 # Как использовать
-1. Скомпильте исп. файл сами, найдите его у кого-нибудь в комьюнити или загрузите со страницы релизов. Текущая версия - 0.1.7.
+1. Скомпильте исп. файл сами, найдите его у кого-нибудь в комьюнити или загрузите со страницы релизов. Текущая версия - 0.1.8.
 2. Распакуйте файл на накопитель и сделайте его загрузочным.
 3. Создайте новый или скопируйте готовый конфиг в корень.
 4. Запустите.
@@ -30,33 +30,61 @@
 
     Op OpName
         GUID
+        # Команда LoadGUIDandSaveFreeform поддерживает до 2 модификаторов, но остальные команды только 1.
+        # В зависимости от наличия второго GUID, выбирается режим работы.
+        <GUID>
     <Op Patch>
         Argument 1
         Argument 2
         Argument 3
     <End>
     
-    # Если драйвер ещё не в памяти
+    # Если драйвер ещё не в памяти.
     <Op Exec>
 
 ### Значение
 
-    OpName : Patch, LoadGUIDandSavePE, NonamePE, NonameTE, UninstallProtocol, Compatibility и остальные
+    OpName : Patch, LoadGUIDandSavePE, NonamePE, UninstallProtocol, Compatibility и остальные
     GUID : GUID драйвера для поиска или протокола
     Argument 1 : OFFSET, PATTERN, REL_NEG_OFFSET, REL_POS_OFFSET
     Argument 2 : Модификатор для Argument 1 (например, HEX шаблон)
     Argument 3 : HEX патч
     
 # Добавленные команды
-## LoadGUIDandSavePE
-Загружает PE секцию модуля из FV по GUID. Применимо когда у модуля нет имени. Редко для патчей, так как в память загружается вторая копия модуля.
-</br>Т.е. команда нужна для особых случаев когда у App, запуск которого инициирует вход в биос, нет секции UI.
-</br>Что делает команду менее бесполезной это сохранение PE секции модуля как файл на флешку. Может быть применимо когда ни один способ дампа не работает.
+## LoadGUIDandSavePE, LoadGUIDandSaveFreeform
+Загружают PE, RAW, FREEFORM секции модуля из Firmware Volume по GUID. Применимо когда у модуля нет имени, Op LoadFromFV не использовать. Редко для патчей, так как в память загружается вторая копия модуля.
+</br>Т.е. первая команда нужна для особых случаев когда у App, запуск которого инициирует вход в биос, нет секции UI.
+</br>Что делает команды менее бесполезными, это сохранение секции модуля как файл на флешку. Может выручить когда ни один способ дампа не работает.
 </br>Формат GUID как в UEFITool.
+  <details>
+  <summary><strong>LoadGUIDandSavePE</strong></summary>
+    
+  ```
+  Op LoadGUIDandSavePE
+  
+  # Это SetupUtility
+  FE3542FE-C1D3-4EF8-657C-8048606FF670
+  ```
 
-    Op LoadGUIDandSavePE
-    # Это SetupUtility
-    FE3542FE-C1D3-4EF8-657C-8048606FF670
+  </details>
+  <details>
+  <summary><strong>LoadGUIDandSaveFreeform</strong></summary>
+    
+  ```
+  Op LoadGUIDandSaveFreeform
+  
+  # Это SmallLogo с section subtype RAW. GUID от File.
+  63819805-67BB-46EF-AA8D-1524A19A01E4
+
+
+  Op LoadGUIDandSaveFreeform
+  
+  # Это setupdata. У section subtype FREEFORM есть свой GUID, его тоже нужно указать, даже если они одинаковы.
+  FE612B72-203C-47B1-8560-A66D946EB371
+  FE612B72-203C-47B1-8560-A66D946EB371
+  ```
+
+  </details>
 
 ## NonamePE, NonameTE
 Используют одну и ту-же функцию, с различием в лишь одном передаваемом значении.
