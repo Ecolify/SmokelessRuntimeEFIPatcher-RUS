@@ -11,7 +11,7 @@
 #include <Library/MemoryAllocationLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/PrintLib.h>
-//#include <Protocol/FirmwareVolume.h>              //Eliminated hardcoded FilterProtocol. Is not part of edk2, may add manually.
+#include <Protocol/FirmwareVolume.h>              //FirmwareVolumeProtocol. Is not part of edk2, may add manually.
 #include <Protocol/FirmwareVolume2.h>
 #include <Protocol/BlockIo.h>
 #include <Protocol/DevicePath.h>
@@ -38,8 +38,8 @@ BOOLEAN ENG = FALSE;
 
 //Initizalize log function
 VOID LogToFile(
-  EFI_FILE *LogFile,
-  CHAR16 *String
+  IN EFI_FILE *LogFile,
+  IN CHAR16 *String
 );
 
 CHAR16 *FindLoadedImageFileName(
@@ -53,30 +53,26 @@ UINTN FindLoadedImageBufferSize(
 );
 
 EFI_STATUS LoadandRunImage(
-  EFI_HANDLE ImageHandle,
-  EFI_SYSTEM_TABLE *SystemTable,
-  CHAR16 *FileName,
-  EFI_HANDLE *AppImageHandle
-);
-
-UINT8 *FindBaseAddressFromName(
-  const CHAR16 *Name
+  IN EFI_HANDLE ImageHandle,
+  IN EFI_SYSTEM_TABLE *SystemTable,
+  IN CHAR16 *FileName,
+  OUT EFI_HANDLE *AppImageHandle
 );
 
 EFI_STATUS LocateAndLoadFvFromName(
-  CHAR16 *Name,
-  EFI_SECTION_TYPE Section_Type,
-  UINT8 **Buffer,
-  UINTN *BufferSize,
-  EFI_GUID FilterProtocol
+  IN CHAR16 *Name,
+  IN EFI_SECTION_TYPE Section_Type,
+  OUT UINT8 **Buffer,
+  OUT UINTN *BufferSize,
+  IN EFI_GUID FilterProtocol
 );
 
 EFI_STATUS LocateAndLoadFvFromGuid(
-  EFI_GUID GUID16,
-  EFI_SECTION_TYPE Section_Type,
-  UINT8 **Buffer,
-  UINTN *BufferSize,
-  EFI_GUID FilterProtocol
+  IN EFI_GUID GUID16,
+  IN EFI_SECTION_TYPE Section_Type,
+  OUT UINT8 **Buffer,
+  OUT UINTN *BufferSize,
+  IN EFI_GUID FilterProtocol
 );
 
 EFI_STATUS RegexMatch(
@@ -85,4 +81,8 @@ EFI_STATUS RegexMatch(
   IN      UINT16 Size,
   IN      EFI_REGULAR_EXPRESSION_PROTOCOL *Oniguruma,
   OUT     BOOLEAN *CResult
+);
+
+UINT8 *FindBaseAddressFromName(
+  IN const CHAR16 *Name
 );

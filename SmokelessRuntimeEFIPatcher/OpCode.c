@@ -3,15 +3,17 @@
 
 EFI_STATUS
 FindLoadedImageFromName(
-  EFI_HANDLE ImageHandle,
-  CHAR8 *FileName,
-  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
-  EFI_GUID FilterProtocol
+  IN EFI_HANDLE ImageHandle,
+  IN CHAR8 *FileName,
+  OUT EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  IN EFI_GUID FilterProtocol
 )
 {
     EFI_STATUS Status;
     UINTN HandleSize = 0;
     EFI_HANDLE *Handles;
+    //-----------------------------------------------------
+
     CHAR16 FileName16[255] = {0};
     UnicodeSPrint(FileName16, sizeof(FileName16), L"%a", FileName);
     Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &HandleSize, NULL);
@@ -19,7 +21,7 @@ FindLoadedImageFromName(
     {
         Handles = AllocateZeroPool(HandleSize * sizeof(EFI_HANDLE));
         Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &HandleSize, Handles);
-        if (ENG == TRUE) { Print(L"Retrived %d Handle, with %r\n\r", HandleSize, Status); }
+        if (ENG == TRUE) { Print(L"Retrived %d Handles, with %r\n\r", HandleSize, Status); }
         else { Print(L"Всего найдено дескрипторов: %d\n\r", HandleSize); }
     }
 
@@ -45,23 +47,24 @@ FindLoadedImageFromName(
 
 EFI_STATUS
 FindLoadedImageFromGUID(
-  EFI_HANDLE ImageHandle,
-  CHAR8 *FileName,
-  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
-  EFI_SECTION_TYPE Section_Type,
-  EFI_GUID FilterProtocol
+  IN EFI_HANDLE ImageHandle,
+  IN CHAR8 *FileGuid,
+  OUT EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  IN EFI_SECTION_TYPE Section_Type,
+  IN EFI_GUID FilterProtocol
 )
 {
     EFI_STATUS Status;
     UINTN HandleSize = 0;
     EFI_HANDLE *Handles;
+    //-----------------------------------------------------
 
     EFI_GUID GUID = { 0 }; //Initialize beforehand
-    Status = AsciiStrToGuid(FileName, &GUID);
+    Status = AsciiStrToGuid(FileGuid, &GUID);
     if (EFI_ERROR(Status))
     {
-      if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to GUID\n", FileName); }
-      else { Print(L"Не удалось сконвертировать \"%a\" в GUID\n", FileName); }
+      if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to GUID\n", FileGuid); }
+      else { Print(L"Не удалось сконвертировать \"%a\" в GUID\n", FileGuid); }
       return Status;
     }
 
@@ -80,8 +83,8 @@ FindLoadedImageFromGUID(
 
     if (Section_Type == EFI_SECTION_TE) {
       if (BufferSize != 0) {
-        if (ENG == TRUE) { Print(L"Although the section with size: %d was found in BIOS,\nSREP may not be able to find TE in RAM\n", BufferSize); }
-        else { Print(L"Хотя в БИОС нашлась секция с размером: %d,\nSREP может быть не способен найти TE в RAM\n", BufferSize); }
+        if (ENG == TRUE) { Print(L"Although the section with size: %d was found in BIOS,\nSREP may not be able to find TE in RAM if Op Compatibility modifier is bad\n", BufferSize); }
+        else { Print(L"Хотя в БИОС нашлась секция с размером: %d,\nSREP может быть не способен найти TE в RAM если модификатор Op Compatibility не подходит\n", BufferSize); }
       }
     }
 
@@ -112,20 +115,21 @@ FindLoadedImageFromGUID(
 }
 
 EFI_STATUS
-LoadFS(
-  EFI_HANDLE ImageHandle,
-  CHAR8 *FileName,
-  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
-  EFI_HANDLE *AppImageHandle
+LoadFromFS(
+  IN EFI_HANDLE ImageHandle,
+  IN CHAR8 *FileName,
+  OUT EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  OUT EFI_HANDLE *AppImageHandle
 )
 {
-    //UINTN ExitDataSize;
     UINTN NumHandles;
     UINTN Index;
     EFI_HANDLE *SFS_Handles;
     EFI_STATUS Status = EFI_SUCCESS;
     EFI_BLOCK_IO_PROTOCOL *BlkIo;
     EFI_DEVICE_PATH_PROTOCOL *FilePath;
+    //-----------------------------------------------------
+
     Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiSimpleFileSystemProtocolGuid, NULL, &NumHandles, &SFS_Handles);
 
     if (Status != EFI_SUCCESS)
@@ -134,7 +138,7 @@ LoadFS(
         else { Print(L"Не удалось найти ни одного дескриптора с\n поддержкой EfiSimpleFileSystemProtocol\n"); }
         return Status;
     }
-    if (ENG == TRUE) { Print(L"No of Handle - %d\n", NumHandles); }
+    if (ENG == TRUE) { Print(L"No of Handles - %d\n", NumHandles); }
     else { Print(L"Кол-во доступных дескрипторов: %d\n", NumHandles); }
 
     for (Index = 0; Index < NumHandles; Index++)
@@ -174,13 +178,13 @@ LoadFS(
 }
 
 EFI_STATUS
-LoadFV(
-  EFI_HANDLE ImageHandle,
-  CHAR8 *FileName,
-  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
-  EFI_HANDLE *AppImageHandle,
-  EFI_SECTION_TYPE Section_Type,
-  EFI_GUID FilterProtocol
+LoadFromFV(
+  IN EFI_HANDLE ImageHandle,
+  IN CHAR8 *FileName,
+  OUT EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  OUT EFI_HANDLE *AppImageHandle,
+  IN EFI_SECTION_TYPE Section_Type,
+  IN EFI_GUID FilterProtocol
 )
 {
     EFI_STATUS Status = EFI_SUCCESS;
@@ -197,8 +201,8 @@ LoadFV(
         FreePool(Buffer);
     if (Status != EFI_SUCCESS)
     {
-        if (ENG == TRUE) { Print(L"Could not Locate the image from FV %r\n", Status); }
-        else { Print(L"Не удалось загрузить драйвер из FV\n"); }
+        if (ENG == TRUE) { Print(L"Could not Locate the image from FV: %r\n", Status); }
+        else { Print(L"Не удалось загрузить драйвер из FV: %r\n", Status); }
     }
     else
     {
@@ -211,14 +215,14 @@ LoadFV(
 };
 
 EFI_STATUS
-LoadFVbyGUID(
-  EFI_HANDLE ImageHandle,
-  CHAR8 *FileName,
-  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
-  EFI_HANDLE *AppImageHandle,
-  EFI_SECTION_TYPE Section_Type,
-  EFI_SYSTEM_TABLE *SystemTable,
-  EFI_GUID FilterProtocol
+LoadGUIDandSavePE(
+  IN EFI_HANDLE ImageHandle,
+  IN CHAR8 *FileGuid,
+  OUT EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  OUT EFI_HANDLE *AppImageHandle,
+  IN EFI_SECTION_TYPE Section_Type,
+  IN EFI_SYSTEM_TABLE *SystemTable,
+  IN EFI_GUID FilterProtocol
 )
 {
   EFI_STATUS Status = EFI_SUCCESS;
@@ -227,23 +231,24 @@ LoadFVbyGUID(
   EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
   EFI_FILE *Root;
   EFI_FILE *DumpFile = NULL;
+  //-----------------------------------------------------
 
   HandleProtocol = SystemTable->BootServices->HandleProtocol;
   HandleProtocol(ImageHandle, &gEfiLoadedImageProtocolGuid, (void **)&LoadedImage);
-  HandleProtocol(LoadedImage->DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (void**)&FileSystem);
+  HandleProtocol(LoadedImage->DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (void **)&FileSystem);
   FileSystem->OpenVolume(FileSystem, &Root);
 
   EFI_GUID GUID = { 0 };
-  Status = AsciiStrToGuid(FileName, &GUID);
+  Status = AsciiStrToGuid(FileGuid, &GUID);
   if (EFI_ERROR(Status))
   {
-    if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to GUID\n", FileName); }
-    else { Print(L"Не удалось сконвертировать \"%a\" в GUID\n", FileName); }
+    if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to GUID\n", FileGuid); }
+    else { Print(L"Не удалось сконвертировать \"%a\" в GUID\n", FileGuid); }
     return Status;
   }
 
   /* Debug
-  Print(L"GUID from OpCode.c raw: %s\n\r", FileName);
+  Print(L"GUID from OpCode.c raw: %s\n\r", FileGuid);
   Print(L"GUID from OpCode.c converted: %g\n\r", GUID);
   */
 
@@ -259,21 +264,23 @@ LoadFVbyGUID(
   }
 
   CHAR16 DFName[41] = { 0 };                                  //36 chars for guid, 4 for the ".bin" ext and 1 for null-terminator
-  UnicodeSPrint(DFName, sizeof(DFName), L"%a.bin", FileName); //Append ".bin"
+  UnicodeSPrint(DFName, sizeof(DFName), L"%a.bin", FileGuid); //Append ".bin"
   Root->Open(Root, &DumpFile, DFName, EFI_FILE_MODE_WRITE | EFI_FILE_MODE_READ | EFI_FILE_MODE_CREATE, 0);
   DumpFile->Write(DumpFile, &BufferSize, (VOID **)Buffer);
   DumpFile->Flush(DumpFile);
 
-  if (ENG == TRUE) { Print(L"Creating image dump on FS: %r\n", Status); } //Print result
-  else { Print(L"Создаем дамп PE секции драйвера, размер должен быть: %d,\nрезультат: %r\n", BufferSize, Status); }
+  if (ENG == TRUE) { Print(L"Creating section dump on FS,\nthis shouldn't take more than 3 secs.\nOtherwise, UEFI system unsupported.\n"); }
+  else { Print(L"Создаем дамп секции на накопителе,\nэто должно занять не более 3 сек.\nИначе, UEFI не поддерживается.\n"); }
 
   Status = gBS->LoadImage(FALSE, ImageHandle, (VOID *)NULL, Buffer, BufferSize, AppImageHandle); //Parse saved buffer to LoadImage BS
   if (Buffer != NULL)
+  {
     FreePool(Buffer);
+  }
   if (Status != EFI_SUCCESS)
   {
-    if (ENG == TRUE) { Print(L"Could not Locate the image from FV: %r\n", Status); }
-    else { Print(L"Не удалось загрузить драйвер из FV\n"); }
+    if (ENG == TRUE) { Print(L"Could not load the image: %r\n", Status); }
+    else { Print(L"Не удалось загрузить драйвер: %r\n", Status); }
   }
   else
   {
@@ -286,7 +293,224 @@ LoadFVbyGUID(
 };
 
 EFI_STATUS
-Exec(EFI_HANDLE *AppImageHandle)
+LoadGUIDandSaveFreeform(
+  IN EFI_HANDLE ImageHandle,
+  OUT VOID **Pointer,
+  OUT UINT64 *Size,
+  IN CHAR8 *FileGuid,
+  IN CHAR8 *SectionGuid OPTIONAL,
+  IN EFI_SYSTEM_TABLE *SystemTable,
+  IN EFI_GUID FilterProtocol
+)
+{
+    EFI_STATUS Status;
+    EFI_GUID File = { 0 };
+    EFI_GUID Section = { 0 };
+    EFI_HANDLE *HandleBuffer = NULL;
+    UINTN NumberOfHandles;
+    UINT32 Authentication;
+    UINTN i,j;
+    VOID *SectionData = NULL;
+    UINTN DataSize;
+    EFI_SECTION_TYPE SectionType;
+    EFI_FIRMWARE_VOLUME_PROTOCOL *Fv = NULL;
+    EFI_FIRMWARE_VOLUME2_PROTOCOL *Fv2 = NULL;
+    if (!CompareGuid(&FilterProtocol, &gEfiFirmwareVolumeProtocolGuid)) {
+      if (ENG == TRUE) { Print(L"Going to search with EfiFirmwareVolume2Protocol\n"); }
+      else { Print(L"Поиск будет выполнен через EfiFirmwareVolume2Protocol\n"); }
+    }
+
+    //Dump related vars
+    EFI_HANDLE_PROTOCOL HandleProtocol;
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *FileSystem;
+    EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
+    EFI_FILE *Root;
+    EFI_FILE *DumpFile = NULL;
+    //-----------------------------------------------------
+
+    HandleProtocol = SystemTable->BootServices->HandleProtocol;
+    HandleProtocol(ImageHandle, &gEfiLoadedImageProtocolGuid, (void **)&LoadedImage);
+    HandleProtocol(LoadedImage->DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (void **)&FileSystem);
+    FileSystem->OpenVolume(FileSystem, &Root);
+
+    Status = AsciiStrToGuid(FileGuid, &File);
+    if (EFI_ERROR(Status))
+    {
+      if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to File GUID\n", FileGuid); }
+      else { Print(L"Не удалось сконвертировать \"%a\" в File GUID\n", FileGuid); }
+      return Status;
+    }
+
+    if (SectionGuid != NULL)
+    {
+      Status = AsciiStrToGuid(SectionGuid, &Section);
+      if (EFI_ERROR(Status))
+      {
+        if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to Section Guid\n", SectionGuid); }
+        else { Print(L"Не удалось сконвертировать \"%a\" в Section Guid\n", SectionGuid); }
+        return Status;
+      }
+    }
+
+    // Locate the Firmware volume protocol
+    if (!CompareGuid(&FilterProtocol, &gEfiFirmwareVolumeProtocolGuid)) {
+      Status = gBS->LocateHandleBuffer(
+        ByProtocol,
+        &gEfiFirmwareVolume2ProtocolGuid,
+        NULL,
+        &NumberOfHandles,
+        &HandleBuffer
+      );
+    }
+    else
+    {
+      Status = gBS->LocateHandleBuffer(
+        ByProtocol,
+        &gEfiFirmwareVolumeProtocolGuid,
+        NULL,
+        &NumberOfHandles,
+        &HandleBuffer
+      );
+    }
+
+    if (EFI_ERROR(Status))
+    {
+      if (ENG == TRUE) { Print(L"Сould not find any handle\n"); }
+      else { Print(L"Не удалось найти ни одного дескриптора\n"); }
+      return EFI_NOT_FOUND;
+    }
+    if (ENG == TRUE) { Print(L"Found %d Handle Instances\n\r", NumberOfHandles); }
+    else
+    {
+      Print(L"Всего найдено дескрипторов: %d\n\r", NumberOfHandles);
+    }
+
+    SectionType = (SectionGuid == NULL) ? EFI_SECTION_RAW : EFI_SECTION_FREEFORM_SUBTYPE_GUID;
+
+    //Find and read raw data files.
+    for (i = 0; i < NumberOfHandles; i++) {
+      if (!CompareGuid(&FilterProtocol, &gEfiFirmwareVolumeProtocolGuid)) {
+        Status = gBS->HandleProtocol(HandleBuffer[i], &gEfiFirmwareVolume2ProtocolGuid, (VOID **)&Fv2);
+      }
+      else
+      {
+        Status = gBS->HandleProtocol(HandleBuffer[i], &gEfiFirmwareVolumeProtocolGuid, (VOID **)&Fv);
+      }
+        if (EFI_ERROR(Status)) { continue; } //[i]
+
+        for(j = 0; ; j++){
+            SectionData = NULL;
+
+            //Read Section From FFS file
+            if (!CompareGuid(&FilterProtocol, &gEfiFirmwareVolumeProtocolGuid)) {
+              Status = Fv2->ReadSection(
+                Fv2,
+                &File,
+                SectionType,
+                j,
+                &SectionData,
+                &DataSize,
+                &Authentication
+              );
+            /*
+            * At least get PE section if
+            * ReadSection failed
+            * and
+            * SectionGuid was not specified by caller
+            */
+              if (EFI_ERROR(Status) && SectionGuid == NULL) {
+                Status = Fv2->ReadSection(
+                  Fv2,
+                  &File,
+                  EFI_SECTION_PE32,
+                  j,
+                  &SectionData,
+                  &DataSize,
+                  &Authentication
+                );
+              }
+            }
+            else
+            {
+              Status = Fv->ReadSection(
+                Fv,
+                &File,
+                SectionType,
+                j,
+                &SectionData,
+                &DataSize,
+                &Authentication
+              );
+
+              if (EFI_ERROR(Status) && SectionGuid == NULL) {
+                Status = Fv->ReadSection(
+                  Fv,
+                  &File,
+                  EFI_SECTION_PE32,
+                  j,
+                  &SectionData,
+                  &DataSize,
+                  &Authentication
+                );
+              }
+            }
+
+            //No file found advance to the next FV...
+            if (Status != EFI_SUCCESS) { break; } //[j]
+
+            //RAW sections don't have guid so we don't need doing file search for them
+            if (SectionType == EFI_SECTION_FREEFORM_SUBTYPE_GUID) {
+              if (ENG == TRUE) { Print(L"Trying to retrieve FREEFORM section from file\n"); }
+              else { Print(L"Пытаемся найти секцию FREEFORM в файле\n"); }
+              EFI_GUID *secguid;
+
+              //Compare Section GUID, to find correct one..
+              secguid = (EFI_GUID *)SectionData; //We can extract Guid from SectionData
+
+              if (CompareGuid(secguid, &Section) != TRUE) {
+                //Free section read, it was not the one we need...
+                if (SectionData != NULL) { FreePool(SectionData); }
+                continue; //[j]
+              }
+
+              //Update
+              DataSize -= sizeof(EFI_GUID);
+              // ReadSection returns pointer to a section GUID, which caller of this function does not want to see.
+              // We could've just returned (EFI_GUID *)AmiData + 1 to the caller,
+              // but this pointer can't be used to free the pool (can't be passed to FreePool).
+              // Copy section data into a new buffer
+              SectionData = AllocatePool(DataSize);
+              if (SectionData == NULL) { Status = EFI_OUT_OF_RESOURCES; }
+              else { CopyMem(SectionData, secguid + 1, DataSize); }
+
+              FreePool(secguid);
+            }
+
+            if (HandleBuffer != NULL) {
+              FreePool(HandleBuffer);
+            }
+            if (!EFI_ERROR(Status)){
+                if (ENG == TRUE) { Print(L"Found\n\nCreating section dump on FS,\nthis shouldn't take more than 3 secs.\nOtherwise, UEFI system unsupported.\n"); }
+                else { Print(L"Найдено\n\nСоздаем дамп секции на накопителе,\nэто должно занять не более 3 сек.\nИначе, UEFI не поддерживается.\n"); }
+                *Pointer = SectionData;
+                *Size = DataSize;
+
+                CHAR16 DFName[41] = { 0 };                                  //36 chars for guid, 4 for the ".bin" ext and 1 for null-terminator
+                UnicodeSPrint(DFName, sizeof(DFName), L"%a.bin", FileGuid); //Append ".bin"
+                Root->Open(Root, &DumpFile, DFName, EFI_FILE_MODE_WRITE | EFI_FILE_MODE_READ | EFI_FILE_MODE_CREATE, 0);
+                DumpFile->Write(DumpFile, Size, (UINT8 *)SectionData); //(UINT8 *)datum is correct
+                DumpFile->Flush(DumpFile);
+            }
+            return Status;
+        }//for [j]
+    }//for [i]
+
+    FreePool(HandleBuffer);
+    return EFI_NOT_FOUND;
+}
+
+EFI_STATUS
+Exec(IN EFI_HANDLE *AppImageHandle)
 {
     UINTN ExitDataSize;
     EFI_STATUS Status = gBS->StartImage(*AppImageHandle, &ExitDataSize, (CHAR16 **)NULL);
@@ -296,23 +520,24 @@ Exec(EFI_HANDLE *AppImageHandle)
 }
 
 EFI_STATUS
-UninstallProtocol(CHAR8 *FileName, UINTN Indexes)
+UninstallProtocol(IN CHAR8 *ProtocolGuid, OUT UINTN Indexes)
 {
    EFI_STATUS Status;
-   EFI_HANDLE *Handles;
-   UINTN HandleSize = 0;
+   EFI_HANDLE *HandlesBuffer;
+   UINTN NumberOfHandles = 0;
    VOID *ProtocolInterface;
+   //-----------------------------------------------------
 
    EFI_GUID GUID = { 0 };
-   Status = AsciiStrToGuid(FileName, &GUID);
+   Status = AsciiStrToGuid(ProtocolGuid, &GUID);
    if (EFI_ERROR(Status))
    {
-     if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to GUID\n", FileName); }
-     else { Print(L"Не удалось сконвертировать \"%a\" в GUID\n", FileName); }
+     if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to GUID\n", ProtocolGuid); }
+     else { Print(L"Не удалось сконвертировать \"%a\" в GUID\n", ProtocolGuid); }
      return Status;
    }
 
-   Status = gBS->LocateHandleBuffer(ByProtocol, &GUID, NULL, &HandleSize, &Handles);
+   Status = gBS->LocateHandleBuffer(ByProtocol, &GUID, NULL, &NumberOfHandles, &HandlesBuffer);
 
   if (EFI_ERROR(Status))
   {
@@ -321,10 +546,10 @@ UninstallProtocol(CHAR8 *FileName, UINTN Indexes)
     return Status;
   } 
   
-  for(UINTN i = 0; i < HandleSize ; i += 1)
+  for(UINTN i = 0; i < NumberOfHandles; i += 1)
   {
     ProtocolInterface = NULL;
-    Status = gBS->HandleProtocol(Handles[i],
+    Status = gBS->HandleProtocol(HandlesBuffer[i],
                                  &GUID,
                                  (VOID **)&ProtocolInterface);
 
@@ -335,7 +560,7 @@ UninstallProtocol(CHAR8 *FileName, UINTN Indexes)
       continue;
     }
 
-    Status = gBS->UninstallProtocolInterface(Handles[i],
+    Status = gBS->UninstallProtocolInterface(HandlesBuffer[i],
                                              &GUID, 
                                              ProtocolInterface);
 
@@ -351,7 +576,7 @@ UninstallProtocol(CHAR8 *FileName, UINTN Indexes)
 }
 
 EFI_STATUS
-UpdateHiiDB(CHAR8 *FileName)
+UpdateHiiDB(IN CHAR8 *FormIdChar)
 {
   EFI_STATUS Status;
 
@@ -380,21 +605,21 @@ UpdateHiiDB(CHAR8 *FileName)
    //UINT8 *RawOpCodeBuffer = (UINT8 *)&StaticValues;
    //UINTN RawOpCodeBufferSize = 0xF;
 
-   if (AsciiStrLen(FileName) > 4)
+   if (AsciiStrLen(FormIdChar) > 4)
    {
-     if (ENG == TRUE) { Print(L"Can't convert \"%a\" to EFI_FORM_ID\n", FileName); }
-     else { Print(L"Не удастся сконвертировать \"%a\" в EFI_FORM_ID\n", FileName); }
+     if (ENG == TRUE) { Print(L"Can't convert \"%a\" to EFI_FORM_ID\n", FormIdChar); }
+     else { Print(L"Не удастся сконвертировать \"%a\" в EFI_FORM_ID\n", FormIdChar); }
      return EFI_UNSUPPORTED;
    }
    CHAR16 FileName16[255] = { 0 };
-   UnicodeSPrint(FileName16, sizeof(FileName16), L"%a", FileName);
+   UnicodeSPrint(FileName16, sizeof(FileName16), L"%a", FormIdChar);
 
    UINTN FormIDUintn = { 0 };
    Status = StrHexToUintnS(FileName16, NULL, &FormIDUintn);
    if (EFI_ERROR(Status))
    {
-     if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to UINT\n", FileName); }
-     else { Print(L"Не удалось сконвертировать \"%a\" в UINT\n", FileName); }
+     if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to UINT\n", FormIdChar); }
+     else { Print(L"Не удалось сконвертировать \"%a\" в UINT\n", FormIdChar); }
      return Status;
    }
 
@@ -457,7 +682,7 @@ UpdateHiiDB(CHAR8 *FileName)
 }
 
 UINTN
-GetAptioHiiDB(BOOLEAN BuffersizeOrPointer)
+GetAptioHiiDB(IN BOOLEAN BufferSizeOrPointer)
 {
   typedef struct {
     UINT32 DataSize;
@@ -469,6 +694,7 @@ GetAptioHiiDB(BOOLEAN BuffersizeOrPointer)
     UINTN Size = 8;
     HiiDbBlock_DATA HiiDB; //The whole var is 8 bytes, I save it into 2 by 4
     UINTN BufferSize = 0, Pointer = 0, Result = 0;
+    //-----------------------------------------------------
 
     Status = gRT->GetVariable(
         L"HiiDB",
@@ -490,7 +716,7 @@ GetAptioHiiDB(BOOLEAN BuffersizeOrPointer)
       Print(L"%x\n", Pointer);
       */
 
-      BuffersizeOrPointer ? (Result = Pointer) : (Result = BufferSize);
+      BufferSizeOrPointer ? (Result = Pointer) : (Result = BufferSize);
       return Result;
     }
     return 0;

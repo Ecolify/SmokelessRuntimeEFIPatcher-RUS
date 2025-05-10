@@ -12,6 +12,7 @@ FindLoadedImageFileName(
     VOID *Buffer;
     UINTN BufferSize;
     UINT32 AuthenticationStatus;
+    //-----------------------------------------------------
 
     if ((LoadedImage == NULL) || (LoadedImage->FilePath == NULL))
     {
@@ -68,6 +69,7 @@ FindLoadedImageBufferSize(
     VOID *Buffer;
     UINTN BufferSize;
     UINT32 AuthenticationStatus;
+    //-----------------------------------------------------
 
     if ((LoadedImage == NULL) || (LoadedImage->FilePath == NULL))
     {
@@ -114,10 +116,10 @@ FindLoadedImageBufferSize(
 
 EFI_STATUS
 LoadandRunImage(
-  EFI_HANDLE ImageHandle,
-  EFI_SYSTEM_TABLE *SystemTable,
-  CHAR16 *FileName,
-  EFI_HANDLE *AppImageHandle
+  IN EFI_HANDLE ImageHandle,
+  IN EFI_SYSTEM_TABLE *SystemTable,
+  IN CHAR16 *FileName,
+  OUT EFI_HANDLE *AppImageHandle
 )
 {
     UINTN ExitDataSize;
@@ -127,6 +129,7 @@ LoadandRunImage(
     EFI_STATUS Status = EFI_SUCCESS;
     EFI_BLOCK_IO_PROTOCOL *BlkIo;
     EFI_DEVICE_PATH_PROTOCOL *FilePath;
+    //-----------------------------------------------------
 
     Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiSimpleFileSystemProtocolGuid, NULL, &NumHandles, &SFS_Handles);
 
@@ -169,11 +172,11 @@ LoadandRunImage(
 
 EFI_STATUS
 LocateAndLoadFvFromName(
-  CHAR16 *Name,
-  EFI_SECTION_TYPE Section_Type,
-  UINT8 **Buffer,
-  UINTN *BufferSize,
-  EFI_GUID FilterProtocol
+  IN CHAR16 *Name,
+  IN EFI_SECTION_TYPE Section_Type,
+  OUT UINT8 **Buffer,
+  OUT UINTN *BufferSize,
+  IN EFI_GUID FilterProtocol
 )
 {
     EFI_STATUS Status;
@@ -184,6 +187,7 @@ LocateAndLoadFvFromName(
     //UINTN Size;
     UINTN Index;
     EFI_FIRMWARE_VOLUME2_PROTOCOL *FvInstance;
+    //-----------------------------------------------------
 
     // FvStatus = 0; // Leftover from Smokeless, the function is a copy of LocateFvInstanceWithTables from AcpiPlatform.c
 
@@ -198,9 +202,8 @@ LocateAndLoadFvFromName(
         &HandleBuffer);
     if (EFI_ERROR(Status))
     {
-        //
-        // Defined errors at this time are not found and out of resources.
-        //
+        if (ENG == TRUE) { Print(L"Сould not find any handle with the specified protocol\n"); }
+        else { Print(L"Не удалось найти ни одного дескриптора с указанным протоколом\n"); }
         return Status;
     }
 
@@ -271,11 +274,11 @@ LocateAndLoadFvFromName(
 
 EFI_STATUS
 LocateAndLoadFvFromGuid(
-  EFI_GUID GUID16,
-  EFI_SECTION_TYPE Section_Type,
-  UINT8 **Buffer,
-  UINTN *BufferSize,
-  EFI_GUID FilterProtocol
+  IN EFI_GUID GUID16,
+  IN EFI_SECTION_TYPE Section_Type,
+  OUT UINT8 **Buffer,
+  OUT UINTN *BufferSize,
+  IN EFI_GUID FilterProtocol
 )
 {
   EFI_STATUS Status;
@@ -283,6 +286,7 @@ LocateAndLoadFvFromGuid(
   UINTN NumberOfHandles;
   UINTN Index;
   EFI_FIRMWARE_VOLUME2_PROTOCOL *FvInstance;
+  //-----------------------------------------------------
 
   //
   // Locate protocol.
@@ -298,6 +302,8 @@ LocateAndLoadFvFromGuid(
     //
     // Defined errors at this time are not found and out of resources.
     //
+    if (ENG == TRUE) { Print(L"Сould not find any handle with the specified protocol\n"); }
+    else { Print(L"Не удалось найти ни одного дескриптора с указанным протоколом\n"); }
     return Status;
   }
 
@@ -371,19 +377,19 @@ LocateAndLoadFvFromGuid(
 
 EFI_STATUS
 RegexMatch(
-  IN      UINT8 *DUMP,
-  IN      CHAR8 *Pattern,
-  IN      UINT16 Size,
-  IN      EFI_REGULAR_EXPRESSION_PROTOCOL *Oniguruma,
-  OUT     BOOLEAN *CResult
+  IN UINT8 *DUMP,
+  IN CHAR8 *Pattern,
+  IN UINT16 Size,
+  IN EFI_REGULAR_EXPRESSION_PROTOCOL *Oniguruma,
+  OUT BOOLEAN *CResult
 )
 {
   EFI_STATUS Status;
-
   CHAR16 tmp[255] = { 0 };
   CHAR16 DUMP16[255] = { 0 };
   CHAR16 Pattern16[255] = { 0 };
   UINTN CapturesCount = 0;  //Reserved for now
+  //-----------------------------------------------------
 
   for (UINT16 i = 0; i < Size; i++) //Get string from buffer
   {
@@ -399,8 +405,8 @@ RegexMatch(
   Print(L"Append result: %r\n\r", Status);
   Print(L"Strings Dump/Pattern %s / %s\n\r", &DUMP16, &Pattern16);
   INTN m = StrCmp(DUMP16, Pattern16);
-  Print(L"Strings match? : %d\n\r", m); //0 is yes, any other means they dont
-  Print(L"DUMP16 : %d Pattern16 : %d\n\r", StrLen(DUMP16), StrLen(Pattern16));
+  Print(L"Strings match? : %a\n\r", m ? L"False" : L"True"); //INT m = 0 is yes, any other means they dont
+  Print(L"DUMP16 : %d, Pattern16 : %d\n\r", StrLen(DUMP16), StrLen(Pattern16));
   */
 
   Status = Oniguruma->MatchString(
@@ -418,18 +424,19 @@ RegexMatch(
 
 //Unused
 UINT8 *
-FindBaseAddressFromName(const CHAR16 *Name)
+FindBaseAddressFromName(IN const CHAR16 *Name)
 {
     EFI_STATUS Status;
     UINTN HandleSize = 0;
     EFI_HANDLE *Handles;
+    //-----------------------------------------------------
 
     Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &HandleSize, NULL);
     if (Status == EFI_BUFFER_TOO_SMALL)
     {
         Handles = AllocateZeroPool(HandleSize * sizeof(EFI_HANDLE));
         Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &HandleSize, Handles);
-        if (ENG == TRUE) { Print(L"Retrived %d Handle, with %r\n\r", HandleSize, Status); }
+        if (ENG == TRUE) { Print(L"Retrived %d Handles, with %r\n\r", HandleSize, Status); }
         else
         {
           Print(L"Всего найдено дескрипторов: %d\n\r", HandleSize);

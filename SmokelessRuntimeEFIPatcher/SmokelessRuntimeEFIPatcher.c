@@ -3,7 +3,7 @@
 #include "Opcode.h"
 
 //Specify app version
-#define SREP_VERSION L"0.1.8rc1 RUS"
+#define SREP_VERSION L"0.1.8 RUS"
 
 //Get font data having external linkage
 extern EFI_WIDE_GLYPH gSimpleFontWideGlyphData[];
@@ -35,7 +35,8 @@ enum OPCODE
     LOADED_GUID_TE,
     LOAD_FS,
     LOAD_FV,
-    LOAD_GUID,
+    LOAD_GUID_PE,
+    LOAD_GUID_RAWnFREEFORM,
     PATCH,
     PATCH_FAST,
     EXEC,
@@ -48,8 +49,8 @@ enum OPCODE
 struct OP_DATA
 {
     enum OPCODE ID;               //Loaded, LoadFromFV, Patch and etc. See the corresp. OPCODE.
-    CHAR8 *Name;                  //<FileName>, argument for the OPCODE.
-    BOOLEAN Name_Dyn_Alloc;
+    CHAR8 *Name, *Name2;          //<FileName>, argument for the OPCODE.
+    BOOLEAN Name_Dyn_Alloc, Name2_Dyn_Alloc;
     UINT64 PatchType;             //Pattern, Offset, Rel...
     BOOLEAN PatchType_Dyn_Alloc;
     INT64 ARG3;                   //Offset
@@ -78,7 +79,7 @@ typedef struct {
 
 //Writes string from the buffer to SREP.log
 VOID
-LogToFile(EFI_FILE *LogFile, CHAR16 *String)
+LogToFile(IN EFI_FILE *LogFile, IN CHAR16 *String)
 {
         UINTN Size = StrLen(String) * 2;      //Size variable equals to the string size, multiplies by 2 cuz Unicode is CHAR16
         LogFile->Write(LogFile,&Size,String); //EFI_FILE_WRITE (Filename, size, the actual string to write)
@@ -87,7 +88,7 @@ LogToFile(EFI_FILE *LogFile, CHAR16 *String)
 
 //Collect OPCODEs from cfg
 static VOID
-Add_OP_CODE(struct OP_DATA *Start, struct OP_DATA *opCode)
+Add_OP_CODE(IN struct OP_DATA *Start, IN OUT struct OP_DATA *opCode)
 {
     struct OP_DATA *next = Start;
     while (next->next != NULL)
@@ -100,7 +101,7 @@ Add_OP_CODE(struct OP_DATA *Start, struct OP_DATA *opCode)
 
 //Detect OPCODEs in read buffer and dispatch immediatelly. Currently unused.
 static VOID
-PrintOPChain(struct OP_DATA *Start)
+PrintOPChain(IN struct OP_DATA *Start)
 {
     struct OP_DATA *next = Start;
     while (next != NULL)
@@ -141,7 +142,7 @@ PrintOPChain(struct OP_DATA *Start)
             UnicodeSPrint(Log,512,u"%a","\t FileName %a\n\r", next->Name);
             LogToFile(LogFile,Log);
             break;
-        case LOAD_GUID:
+        case LOAD_GUID_PE:
             UnicodeSPrint(Log,512,u"%a","LOAD_GUID\n\r");
             LogToFile(LogFile,Log);
             UnicodeSPrint(Log,512,u"%a","\t GUID %a\n\r", next->Name);
@@ -177,7 +178,7 @@ PrintOPChain(struct OP_DATA *Start)
 
 //Prints those 16 symbols wide dumps
 static VOID
-PrintDump(UINT16 Size, UINT8 *DUMP)
+PrintDump(IN UINT16 Size, IN UINT8 *DUMP)
 {
     for (UINT16 i = 0; i < Size; i++)
     {
@@ -196,10 +197,10 @@ PrintDump(UINT16 Size, UINT8 *DUMP)
 //Simple font support function
 static UINT8
 *CreateSimpleFontPkg(
-  EFI_WIDE_GLYPH *WideGlyph,
-  UINT32 WideGlyphSizeInBytes,
-  EFI_NARROW_GLYPH *NarrowGlyph,
-  UINT32 NarrowGlyphSizeInBytes
+  IN EFI_WIDE_GLYPH *WideGlyph,
+  IN UINT32 WideGlyphSizeInBytes,
+  IN EFI_NARROW_GLYPH *NarrowGlyph,
+  IN UINT32 NarrowGlyphSizeInBytes
 ){
   UINT32 PackageLen = sizeof(EFI_HII_SIMPLE_FONT_PACKAGE_HDR) + WideGlyphSizeInBytes + NarrowGlyphSizeInBytes + 4;
   UINT8 *FontPackage = (UINT8*)AllocateZeroPool(PackageLen);
@@ -317,7 +318,6 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
       );
     }
 
-    //Print(L"Point 3 - %r\n\r", Status);
   /*-----------------------------------------------------------------------------------*/
 
   //Setup the program depending on the presence of arguments
@@ -518,6 +518,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
         if (!AsciiStrStr(&ConfigData[curr_pos], "#"))
         {
           if (ENG == TRUE) {
+            Print(L"Current Parsing %a\n\r", &ConfigData[curr_pos]);
             UnicodeSPrint(Log, 512, u"Current Parsing %a\n\r", &ConfigData[curr_pos]);
             LogToFile(LogFile, Log);
           }
@@ -585,9 +586,16 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             if (AsciiStrStr(&ConfigData[curr_pos], "LoadGUIDandSavePE"))
             {
                 Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-                Prev_OP->ID = LOAD_GUID;
+                Prev_OP->ID = LOAD_GUID_PE;
                 Add_OP_CODE(Start, Prev_OP);
                 continue;
+            }
+            if (AsciiStrStr(&ConfigData[curr_pos], "LoadGUIDandSaveFreeform"))
+            {
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = LOAD_GUID_RAWnFREEFORM;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "Compatibility"))
             {
@@ -682,7 +690,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             return EFI_INVALID_PARAMETER;
         }
-        if ((Prev_OP->ID == COMPATIBILITY || Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID || Prev_OP->ID == LOADED || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE || Prev_OP->ID == UNINSTALL_PROTOCOL || Prev_OP->ID == UPDATE_DB) && Prev_OP->Name == 0)
+        if ((Prev_OP->ID == COMPATIBILITY || Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID_PE || Prev_OP->ID == LOADED || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE || Prev_OP->ID == UNINSTALL_PROTOCOL || Prev_OP->ID == UPDATE_DB) && Prev_OP->Name == 0)
         {
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"Found File %a\n\r", &ConfigData[curr_pos]);
@@ -698,6 +706,62 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             CopyMem(FileName, &ConfigData[curr_pos], FileNameLength);
             Prev_OP->Name = FileName;
             Prev_OP->Name_Dyn_Alloc = TRUE;
+            continue;
+        }
+        if ((Prev_OP->ID == LOAD_GUID_RAWnFREEFORM) && (Prev_OP->Name == 0))
+        {
+            UINTN FileGuidLength = AsciiStrLen(&ConfigData[curr_pos]) + 1;
+            CHAR8 *FileName = AllocateZeroPool(FileGuidLength);
+            CopyMem(FileName, &ConfigData[curr_pos], FileGuidLength);
+            Prev_OP->Name = FileName;
+            Prev_OP->Name_Dyn_Alloc = TRUE;
+
+            if (ENG == TRUE) {
+              UnicodeSPrint(Log, 512, u"FileGuid input: %a\n\r", &ConfigData[curr_pos]);
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              UnicodeSPrint(Log, 512, u"Ввод FileGuid: %a\n\r", &ConfigData[curr_pos]);
+              LogToFile(LogFile, Log);
+            }
+
+            //Skip line with FileGuid and skip again if the next one is not populated
+            curr_pos += FileGuidLength + 1; //+1 is needed
+            if (AsciiStrStr(&ConfigData[curr_pos], "Op") || AsciiStrStr(&ConfigData[curr_pos], "Pattern"))
+            {
+              if (ENG == TRUE){
+                Print(L"Freeform Section Subtype GUID not specified, your input: %a,\nlooking for RAW instead\n", &ConfigData[curr_pos]);
+                UnicodeSPrint(Log, 512, u"Freeform Section Subtype GUID not specified, your input: %a,\nlooking for RAW instead\n", &ConfigData[curr_pos]);
+                LogToFile(LogFile, Log);
+              }
+              else
+              {
+                Print(L"Freeform Section Subtype GUID не указан, ввод: %a,\nвместо этого ищем секцию RAW\n", &ConfigData[curr_pos]);
+                UnicodeSPrint(Log, 512, u"Freeform Section Subtype GUID не указан, ввод: %a,\nвместо этого ищем секцию RAW\n", &ConfigData[curr_pos]);
+                LogToFile(LogFile, Log);
+              }
+              //Get back at the prev pos. so not to break the program sequence
+              curr_pos -= FileGuidLength + 1;
+              Prev_OP->Name2 = NULL;
+              continue;
+            }
+
+            if (ENG == TRUE) {
+              UnicodeSPrint(Log, 512, u"SectionGuid input: %a\n\r", &ConfigData[curr_pos]);
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              UnicodeSPrint(Log, 512, u"Ввод SectionGuid: %a\n\r", &ConfigData[curr_pos]);
+              LogToFile(LogFile, Log);
+            }
+
+            UINTN SectionGuidLength = AsciiStrLen(&ConfigData[curr_pos]) + 1;
+            FileName = AllocateZeroPool(SectionGuidLength);
+            CopyMem(FileName, &ConfigData[curr_pos], SectionGuidLength);
+            Prev_OP->Name2 = FileName;
+            Prev_OP->Name2_Dyn_Alloc = TRUE;
             continue;
         }
         if ((Prev_OP->ID == PATCH_FAST || Prev_OP->ID == PATCH) && Prev_OP->PatchType == 0)
@@ -989,7 +1053,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
               UnicodeSPrint(Log, 512, u"Выполняется аргумент LoadFromFS\n\r");
               LogToFile(LogFile, Log);
             }
-            Status = LoadFS(ImageHandle, next->Name, &ImageInfo, &AppImageHandle);
+            Status = LoadFromFS(ImageHandle, next->Name, &ImageInfo, &AppImageHandle);
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"Loaded Image %r -> %x\n\r", Status, ImageInfo->ImageBase);
               LogToFile(LogFile, Log);
@@ -1013,7 +1077,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
               UnicodeSPrint(Log, 512, u"Выполняется аргумент LoadFromFV\n\r");
               LogToFile(LogFile, Log);
             }
-            Status = LoadFV(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32, FilterProtocol);
+            Status = LoadFromFV(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32, FilterProtocol);
             if (Status != EFI_SUCCESS) {
               if (ENG == TRUE) {
                 Print(L"Search result: %r\n\r", Status);
@@ -1039,7 +1103,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
               LogToFile(LogFile, Log);
             }
             break;
-        case LOAD_GUID:
+        case LOAD_GUID_PE:
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing LoadGUIDandSavePE\n\r");
               LogToFile(LogFile, Log);
@@ -1050,29 +1114,68 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
               UnicodeSPrint(Log, 512, u"Выполняется аргумент LoadGUIDandSavePE\n\r");
               LogToFile(LogFile, Log);
             }
-            Status = LoadFVbyGUID(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32, SystemTable, FilterProtocol);
+            Status = LoadGUIDandSavePE(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32, SystemTable, FilterProtocol);
             if (Status != EFI_SUCCESS) {
               if (ENG == TRUE) {
-                Print(L"Search result: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Search result: %r\n\r", Status);
+                Print(L"Section search result: %r\n\r", Status);
+                UnicodeSPrint(Log, 512, u"Section search result: %r\n\r", Status);
                 LogToFile(LogFile, Log);
               }
               else
               {
-                Print(L"Результат поиска: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Результат поиска: %r\n\r", Status);
+                Print(L"Результат поиска секции: %r\n\r", Status);
+                UnicodeSPrint(Log, 512, u"Результат поиска секции: %r\n\r", Status);
                 LogToFile(LogFile, Log);
               }
               break;
             };
             if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Loaded Image %r -> %x\n\r", Status, ImageInfo->ImageBase);
+              Print(L"Section Base and Size: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
+              UnicodeSPrint(Log, 512, u"Section Base and Size: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
             }
             else
             {
-              Print(L"Смещение загрузки: 0x%x\n\r", ImageInfo->ImageBase);
-              UnicodeSPrint(Log, 512, u"Смещение загрузки: 0x%x\n\r", ImageInfo->ImageBase);
+              Print(L"Смещение и размер секции: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
+              UnicodeSPrint(Log, 512, u"Смещение и размер секции: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
+              LogToFile(LogFile, Log);
+            }
+            break;
+        case LOAD_GUID_RAWnFREEFORM:
+            if (ENG == TRUE) {
+              UnicodeSPrint(Log, 512, u"%a", "Executing LoadGUIDandSaveFreeform\n\r");
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"Выполняется аргумент LoadGUIDandSaveFreeform\n\r");
+              UnicodeSPrint(Log, 512, u"Выполняется аргумент LoadGUIDandSaveFreeform\n\r");
+              LogToFile(LogFile, Log);
+            }
+            Status = LoadGUIDandSaveFreeform(ImageHandle, &ImageInfo->ImageBase, &ImageInfo->ImageSize, next->Name, next->Name2, SystemTable, FilterProtocol);
+            if (Status != EFI_SUCCESS) {
+              if (ENG == TRUE) {
+                Print(L"Section search result: %r\n\r", Status);
+                UnicodeSPrint(Log, 512, u"Section search result: %r\n\r", Status);
+                LogToFile(LogFile, Log);
+              }
+              else
+              {
+                Print(L"Результат поиска секции: %r\n\r", Status);
+                UnicodeSPrint(Log, 512, u"Результат поиска секции: %r\n\r", Status);
+                LogToFile(LogFile, Log);
+              }
+              break;
+            };
+            if (ENG == TRUE) {
+              Print(L"Section Base and Size: 0x%x / 0x%x\n\r", (UINT8*)ImageInfo->ImageBase, (UINT8*)ImageInfo->ImageSize);
+              UnicodeSPrint(Log, 512, u"Section Base and Size: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
+              LogToFile(LogFile, Log);
+            }
+            else
+            {
+              Print(L"Смещение и размер секции: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
+              UnicodeSPrint(Log, 512, u"Смещение и размер секции: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
             }
             break;
@@ -1085,7 +1188,6 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
           if(Status == EFI_SUCCESS){
             isDBThere = FALSE;
             DBPointer = 0;
-            Print(L"Reached there\n");
           }
 
           /*
@@ -1576,6 +1678,8 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
     {
         if (next->Name_Dyn_Alloc)
             FreePool((VOID *)next->Name);
+        if (next->Name2_Dyn_Alloc)
+            FreePool((VOID *)next->Name2);
         if (next->PatchType_Dyn_Alloc)
             FreePool((VOID *)next->PatchType);
         if (next->ARG3_Dyn_Alloc)

@@ -24,61 +24,74 @@
 #include <Library/BaseMemoryLib.h>
 
 EFI_STATUS FindLoadedImageFromName(
-  EFI_HANDLE ImageHandle,
-  CHAR8 *FileName,
-  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
-  EFI_GUID FilterProtocol
+  IN EFI_HANDLE ImageHandle,
+  IN CHAR8 *FileName,
+  OUT EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  IN EFI_GUID FilterProtocol
 );
 
 EFI_STATUS FindLoadedImageFromGUID(
-  EFI_HANDLE ImageHandle,
-  CHAR8 *FileName,
-  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
-  EFI_SECTION_TYPE Section_Type,
-  EFI_GUID FilterProtocol
+  IN EFI_HANDLE ImageHandle,
+  IN CHAR8 *FileGuid,
+  OUT EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  IN EFI_SECTION_TYPE Section_Type,
+  IN EFI_GUID FilterProtocol
 );
 
-EFI_STATUS LoadFS(
-  EFI_HANDLE ImageHandle,
-  CHAR8 *FileName,
-  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
-  EFI_HANDLE *AppImageHandle
+EFI_STATUS LoadFromFS(
+  IN EFI_HANDLE ImageHandle,
+  IN CHAR8 *FileName,
+  OUT EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  OUT EFI_HANDLE *AppImageHandle
 );
 
-EFI_STATUS LoadFV(
-  EFI_HANDLE ImageHandle,
-  CHAR8 *FileName,
-  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
-  EFI_HANDLE *AppImageHandle,
-  EFI_SECTION_TYPE Section_Type,
-  EFI_GUID FilterProtocol
+EFI_STATUS LoadFromFV(
+  IN EFI_HANDLE ImageHandle,
+  IN CHAR8 *FileName,
+  OUT EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  OUT EFI_HANDLE *AppImageHandle,
+  IN EFI_SECTION_TYPE Section_Type,
+  IN EFI_GUID FilterProtocol
 );
 
-EFI_STATUS LoadFVbyGUID(
-  EFI_HANDLE ImageHandle,
-  CHAR8 *FileName,
-  EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
-  EFI_HANDLE *AppImageHandle,
-  EFI_SECTION_TYPE Section_Type,
-  EFI_SYSTEM_TABLE *SystemTable,
-  EFI_GUID FilterProtocol
+EFI_STATUS LoadGUIDandSavePE(
+  IN EFI_HANDLE ImageHandle,
+  IN CHAR8 *FileGuid,
+  OUT EFI_LOADED_IMAGE_PROTOCOL **ImageInfo,
+  OUT EFI_HANDLE *AppImageHandle,
+  IN EFI_SECTION_TYPE Section_Type,
+  IN EFI_SYSTEM_TABLE *SystemTable,
+  IN EFI_GUID FilterProtocol
+);
+
+EFI_STATUS
+LoadGUIDandSaveFreeform(
+  IN EFI_HANDLE ImageHandle,
+  OUT VOID **Pointer,
+  OUT UINT64 *Size,
+  IN CHAR8 *FileGuid,
+  IN CHAR8 *SectionGuid OPTIONAL,
+  IN EFI_SYSTEM_TABLE *SystemTable,
+  IN EFI_GUID FilterProtocol
 );
 
 EFI_STATUS Exec(
-  EFI_HANDLE *AppImageHandle
+  IN EFI_HANDLE *AppImageHandle
 );
 
 EFI_STATUS
 UninstallProtocol(
-  CHAR8 *FileName,
-  UINTN Indexes
+  IN CHAR8 *ProtocolGuid,
+  OUT UINTN Indexes
 );
 
+//Unused
 EFI_STATUS
 UpdateHiiDB(
-  CHAR8 *FileName
+  IN CHAR8 *FormIdChar
 );
 
+//Unused
 UINTN GetAptioHiiDB(
-  BOOLEAN BuffersizeOrPointer
+  IN BOOLEAN BufferSizeOrPointer
 );
