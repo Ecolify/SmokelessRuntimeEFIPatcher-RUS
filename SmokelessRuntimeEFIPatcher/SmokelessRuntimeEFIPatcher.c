@@ -1195,11 +1195,11 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
           * Prev Op has not found an Image
           * Prev Op is not GET_DB
           */
-          if (Status != EFI_SUCCESS && isDBThere == FALSE) { FreePool(ImageInfo); goto PatchSearchFail; }
+          if (Status != EFI_SUCCESS && isDBThere == FALSE) { FreePool(ImageInfo); goto PatchFail; }
 
           if (!isDBThere) {
             if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing Fast Patch\n\rPatching Image Size %x:\n\r", ImageInfo->ImageSize);
+              UnicodeSPrint(Log, 512, u"Executing Fast Patch\n\rPatching Image Size: 0x%x\n\r", ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
             }
             else
@@ -1213,7 +1213,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             if (next->PatchType == PATTERN)
             {
                 if (ENG == TRUE) {
-                  UnicodeSPrint(Log, 512, u"%a", "Finding Offset\n\r");
+                  UnicodeSPrint(Log, 512, u"%a", "Finding Pattern\n\r");
                   LogToFile(LogFile, Log);
                 }
                 else
@@ -1251,7 +1251,6 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
                 }
                 if (next->ARG3 == 0xFFFFFFFF) //Stopped near overflow
                 {
-                  PatchSearchFail:
                   if (ENG == TRUE) {
                     UnicodeSPrint(Log, 512, u"%a", "No Pattern Found\n\r");
                     LogToFile(LogFile, Log);
@@ -1286,7 +1285,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             BaseOffset = next->ARG3;
             if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Offset in section: %x\n\r", next->ARG3);
+              UnicodeSPrint(Log, 512, u"Offset in section: 0x%x\n\r", next->ARG3);
               LogToFile(LogFile, Log);
             }
             else
@@ -1331,16 +1330,19 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
                 LogToFile(LogFile, Log);
               }
             }
+
+            Status = EFI_SUCCESS;
+            PatchFail:
             break;
         case PATCH:
             /*
             * Reset ImageInfo if
             * Prev Op has not found an Image
             */
-            if (Status != EFI_SUCCESS) { FreePool(ImageInfo); goto PatchSearchFail; }
+            if (Status != EFI_SUCCESS) { FreePool(ImageInfo); goto PatchFail; }
 
             if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing Patch\n\rPatching Image Size %x:\n\r", ImageInfo->ImageSize);
+              UnicodeSPrint(Log, 512, u"Executing Patch\n\rPatching Image Size: %x\n\r", ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
             }
             else
@@ -1353,7 +1355,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             if (next->PatchType == PATTERN)
             {
                 if (ENG == TRUE) {
-                  UnicodeSPrint(Log, 512, u"%a", "Finding Offset\n\r");
+                  UnicodeSPrint(Log, 512, u"%a", "Finding Pattern\n\r");
                   LogToFile(LogFile, Log);
                 }
                 else
@@ -1469,7 +1471,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             BaseOffset = next->ARG3;
             if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Offset in section: %x\n\r", next->ARG3);
+              UnicodeSPrint(Log, 512, u"Offset in section: 0x%x\n\r", next->ARG3);
               LogToFile(LogFile, Log);
             }
             else
@@ -1534,6 +1536,10 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
                 CopyMem((UINT8 *)ImageInfo->ImageBase + Captures[i], (UINT8 *)next->ARG5, next->ARG4);
               }
             }
+
+            SetMem(Captures, j, 0);
+            j = 0;
+            Status = EFI_SUCCESS;
             // PrintDump(next->ARG4+10,ImageInfo->ImageBase + next->ARG3 -5 ); //A leftover from Smokeless
             break;
         case EXEC:
