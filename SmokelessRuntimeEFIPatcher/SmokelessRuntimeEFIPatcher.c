@@ -3,7 +3,7 @@
 #include "Opcode.h"
 
 //Specify app version
-#define SREP_VERSION L"0.1.8 RUS"
+#define SREP_VERSION L"0.1.9 RUS"
 
 //Get font data having external linkage
 extern EFI_WIDE_GLYPH gSimpleFontWideGlyphData[];
@@ -39,10 +39,11 @@ enum OPCODE
     LOAD_GUID_RAWnFREEFORM,
     PATCH,
     PATCH_FAST,
-    EXEC,
     UNINSTALL_PROTOCOL,
     UPDATE_DB,
-    GET_DB
+    GET_DB,
+    EXEC,
+    SKIP
 };
 
 //Declare data structure for a single operation
@@ -355,7 +356,21 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
     FileSystem->OpenVolume(FileSystem, &Root);
 
     //Get log
+    Status = Root->Open(Root, &LogFile, L"SREP.log", EFI_FILE_MODE_WRITE | EFI_FILE_MODE_READ, 0);
+
+    //File already exists, delete it.
+    if (Status == EFI_SUCCESS) {
+      LogFile->Delete(LogFile);
+      if (ENG == TRUE) {
+        Print(L"The old log was deleted\n\r");
+      }
+      else
+      {
+        Print(L"Старый лог был удалён\n\r");
+      }
+    }
     Status = Root->Open(Root, &LogFile, L"SREP.log", EFI_FILE_MODE_WRITE | EFI_FILE_MODE_READ | EFI_FILE_MODE_CREATE, 0);
+
     if (Status != EFI_SUCCESS)
     {
         if (ENG == TRUE) {
@@ -440,12 +455,12 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
     }
     UINTN ConfigDataSize = FileInfo->FileSize + 1; //Add Last null Terminator
     if (ENG == TRUE) {
-      UnicodeSPrint(Log, 512, u"Config Size: 0x%x\n\r", ConfigDataSize);
+      UnicodeSPrint(Log, 512, u"Config Size: 0x%x\n\r", ConfigDataSize - 1);  //-1 to exclude Last null Terminator from size
       LogToFile(LogFile, Log);
     }
     else
     {
-      UnicodeSPrint(Log, 512, u"Размер конфига в HEX: 0x%x\n\r", ConfigDataSize);
+      UnicodeSPrint(Log, 512, u"Размер конфига в HEX: 0x%x\n\r", ConfigDataSize - 1);
       LogToFile(LogFile, Log);
     }
     CHAR8 *ConfigData = AllocateZeroPool(ConfigDataSize);
@@ -515,7 +530,12 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             continue;
         }
         NullByteSkipped = FALSE;
-        if (!AsciiStrStr(&ConfigData[curr_pos], "#"))
+        if (AsciiStrStr(&ConfigData[curr_pos], "#"))
+        {
+          curr_pos += AsciiStrLen(&ConfigData[curr_pos]); //Skip the whole line
+          continue;
+        }
+        else
         {
           if (ENG == TRUE) {
             Print(L"Current Parsing %a\n\r", &ConfigData[curr_pos]);
@@ -528,11 +548,6 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             UnicodeSPrint(Log, 512, u"В данный момент обрабатываем строку %a\n\r", &ConfigData[curr_pos]);
             LogToFile(LogFile, Log);
           }
-        }
-        else
-        {
-          curr_pos += AsciiStrLen(&ConfigData[curr_pos]); //Skip the whole line
-          continue;
         }
         if (AsciiStrStr(&ConfigData[curr_pos], "End"))
         {
@@ -571,24 +586,24 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "LoadFromFS"))
             {
-                Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-                Prev_OP->ID = LOAD_FS;
-                Add_OP_CODE(Start, Prev_OP);
-                continue;
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = LOAD_FS;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "LoadFromFV"))
             {
-                Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-                Prev_OP->ID = LOAD_FV;
-                Add_OP_CODE(Start, Prev_OP);
-                continue;
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = LOAD_FV;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "LoadGUIDandSavePE"))
             {
-                Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-                Prev_OP->ID = LOAD_GUID_PE;
-                Add_OP_CODE(Start, Prev_OP);
-                continue;
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = LOAD_GUID_PE;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "LoadGUIDandSaveFreeform"))
             {
@@ -606,46 +621,84 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "Loaded"))
             {
-                Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-                Prev_OP->ID = LOADED;
-                Add_OP_CODE(Start, Prev_OP);
-                continue;
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = LOADED;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "NonamePE"))
             {
-                Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-                Prev_OP->ID = LOADED_GUID_PE;
-                Add_OP_CODE(Start, Prev_OP);
-                continue;
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = LOADED_GUID_PE;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "NonameTE"))
             {
-                Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-                Prev_OP->ID = LOADED_GUID_TE;
-                Add_OP_CODE(Start, Prev_OP);
-                continue;
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = LOADED_GUID_TE;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "FastPatch"))
             {
-                Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-                Prev_OP->ID = PATCH_FAST;
-                Add_OP_CODE(Start, Prev_OP);
-                continue;
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = PATCH_FAST;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "Patch"))
             {
-                Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-                Prev_OP->ID = PATCH;
-                Add_OP_CODE(Start, Prev_OP);
-                continue;
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = PATCH;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "Exec"))
             {
-                if (ENG != TRUE) { Print(L"Обнаружена команда Exec, запуск приложения доб. в очередь\n\r"); }
-                Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-                Prev_OP->ID = EXEC;
-                Add_OP_CODE(Start, Prev_OP);
+              if (ENG != TRUE) { Print(L"Обнаружена команда Exec, запуск приложения доб. в очередь\n\r"); }
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = EXEC;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
+            }
+            if (AsciiStrStr(&ConfigData[curr_pos], "Skip"))
+            {
+              if (ENG != TRUE) { Print(L"Обнаружена команда Skip.\n\r"); }
+
+              //Debug
+              //Print(L" Prev_OP: %d ", Prev_OP->ID);
+
+              /*
+              * Add Op Code "Skip" if
+              * 7 >= ID <= 13 
+              */
+              if (Prev_OP->ID >= 7 && Prev_OP->ID <= 13) {
+                if (ENG == TRUE) {
+                  Print(L"If the previous Op succeeds,\nskip will be performed\n\r");
+                }
+                else
+                {
+                  Print(L"В случае успеха предыдущей,\nбудет выполнен переход на указанное кол-во команд вперёд\n\r");
+                }
+              }
+              else
+              {
+                if (ENG == TRUE) {
+                  Print(L"But previous one doesn't support \"Op Skip\", so nothing's going to happen\n\r");
+                }
+                else
+                {
+                  Print(L"Но предыдущая не поддерживает эту команду, поэтому пропуск не случится\n\r");
+                }
+                curr_pos += AsciiStrLen(&ConfigData[curr_pos]);
                 continue;
+              }
+
+              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
+              Prev_OP->ID = SKIP;
+              Add_OP_CODE(Start, Prev_OP);
+              continue;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "UninstallProtocol"))
             {
@@ -690,7 +743,14 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             return EFI_INVALID_PARAMETER;
         }
-        if ((Prev_OP->ID == COMPATIBILITY || Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID_PE || Prev_OP->ID == LOADED || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE || Prev_OP->ID == UNINSTALL_PROTOCOL || Prev_OP->ID == UPDATE_DB) && Prev_OP->Name == 0)
+
+        if (
+             (
+               Prev_OP->ID == COMPATIBILITY || Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID_PE || Prev_OP->ID == LOADED
+               || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE || Prev_OP->ID == UNINSTALL_PROTOCOL || Prev_OP->ID == SKIP || Prev_OP->ID == UPDATE_DB
+             )
+             && Prev_OP->Name == 0
+           )
         {
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"Found File %a\n\r", &ConfigData[curr_pos]);
@@ -912,8 +972,9 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
 
     /*Start of the actual execution*/
     struct OP_DATA *next;
-    INT64 BaseOffset; //REL_POS and REL_NEG args rely on this
 
+    //Op Patch vars
+    INT64 BaseOffset; //REL_POS and REL_NEG args rely on this
     UINT64 *Captures = { 0 }; //Represents found offsets, each offset can be up to 8 bytes
     UINTN j = 0; //Stores Captures index
 
@@ -928,14 +989,18 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
     //Op UninstallProtocol var
     UINTN UninstallIndexes = 0;
 
+    //Op Skip var
+    BOOLEAN isOpSkipAllowed = FALSE;
+    UINT16 skip_pos = 0;
+
     for (next = Start; next != NULL; next = next->next)
     {
-        switch (next->ID)
-        {
+        switch (next->ID){
         case NO_OP:
             UnicodeSPrint(Log,512,u"NOP\n\r");
             break;
         case COMPATIBILITY:
+            isOpSkipAllowed = FALSE;
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing Compatibility\n\r");
               LogToFile(LogFile, Log);
@@ -972,6 +1037,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             Status = EFI_NOT_FOUND; //This isn't an Op which loads Image, so it mustn't return Status from AsciiStrToGuid
             break;
         case LOADED:
+            isOpSkipAllowed = FALSE;
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing Loaded\n\r");
               LogToFile(LogFile, Log);
@@ -995,6 +1061,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             break;
         case LOADED_GUID_PE:
+            isOpSkipAllowed = FALSE;
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing NonamePE\n\r");
               LogToFile(LogFile, Log);
@@ -1019,6 +1086,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             break;
         case LOADED_GUID_TE:
+            isOpSkipAllowed = FALSE;
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing NonameTE\n\r");
               LogToFile(LogFile, Log);
@@ -1043,6 +1111,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             break;
         case LOAD_FS:
+            isOpSkipAllowed = FALSE;
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing LoadFromFS\n\r");
               LogToFile(LogFile, Log);
@@ -1067,6 +1136,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             // UnicodeSPrint(Log,512,u"\t FileName %a\n\r", next->ARG2); // A leftover from Smokeless
             break;
         case LOAD_FV:
+            isOpSkipAllowed = FALSE;
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing LoadFromFV\n\r");
               LogToFile(LogFile, Log);
@@ -1104,6 +1174,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             break;
         case LOAD_GUID_PE:
+            isOpSkipAllowed = FALSE;
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing LoadGUIDandSavePE\n\r");
               LogToFile(LogFile, Log);
@@ -1140,8 +1211,10 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
               UnicodeSPrint(Log, 512, u"Смещение и размер секции: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
             }
+            isOpSkipAllowed = TRUE;
             break;
         case LOAD_GUID_RAWnFREEFORM:
+            isOpSkipAllowed = FALSE;
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing LoadGUIDandSaveFreeform\n\r");
               LogToFile(LogFile, Log);
@@ -1178,8 +1251,10 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
               UnicodeSPrint(Log, 512, u"Смещение и размер секции: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
             }
+            isOpSkipAllowed = TRUE;
             break;
         case PATCH_FAST:
+          isOpSkipAllowed = FALSE;
 
           /*
           * Reset to patch by ImageInfo if
@@ -1195,7 +1270,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
           * Prev Op has not found an Image
           * Prev Op is not GET_DB
           */
-          if (Status != EFI_SUCCESS && isDBThere == FALSE) { FreePool(ImageInfo); goto PatchFail; }
+          if (Status != EFI_SUCCESS && isDBThere == FALSE){ FreePool(ImageInfo); goto PatchFail; }
 
           if (!isDBThere) {
             if (ENG == TRUE) {
@@ -1296,6 +1371,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             
             if (next->ARG3 != 0) {
+              isOpSkipAllowed = TRUE;
               if (ENG == TRUE) {
                 Print(L"Patched\n\r");
                 UnicodeSPrint(Log, 512, u"%a", "\nPatched\n\r");
@@ -1335,6 +1411,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             PatchFail:
             break;
         case PATCH:
+            isOpSkipAllowed = FALSE;
             /*
             * Reset ImageInfo if
             * Prev Op has not found an Image
@@ -1403,6 +1480,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
                       UnicodeSPrint(Log, 512, u"\rНайденные места:\n\r");
                       LogToFile(LogFile, Log);
                     }
+                    isOpSkipAllowed = TRUE;
                     next->ARG3 = i;
                   }
 
@@ -1483,6 +1561,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             // PrintDump(next->ARG4+10,ImageInfo->ImageBase + next->ARG3 -5 ); //A leftover from Smokeless
 
             if (next->ARG3 != 0) {
+              isOpSkipAllowed = TRUE;
               if (ENG == TRUE) {
                 Print(L"Patched\n\r");
                 UnicodeSPrint(Log, 512, u"%a", "\nPatched\n\r");
@@ -1494,6 +1573,8 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
                 UnicodeSPrint(Log, 512, u"\nПатч выполнен\n\r");
                 LogToFile(LogFile, Log);
               }
+              // Patch first found instance only
+              CopyMem((UINT8*)ImageInfo->ImageBase + next->ARG3, (UINT8*)next->ARG5, next->ARG4);
             }
             else
             {
@@ -1508,8 +1589,6 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
                 UnicodeSPrint(Log, 512, u"\nПатч провалился\n\n\r");
                 LogToFile(LogFile, Log);
               }
-              // Patch first found instance only
-              CopyMem((UINT8 *)ImageInfo->ImageBase + next->ARG3, (UINT8 *)next->ARG5, next->ARG4);
             }
 
             // Patch every instance from Captures (it includes all except the first one)
@@ -1543,6 +1622,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             // PrintDump(next->ARG4+10,ImageInfo->ImageBase + next->ARG3 -5 ); //A leftover from Smokeless
             break;
         case EXEC:
+            isOpSkipAllowed = FALSE;
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "EXEC\n\r");
               LogToFile(LogFile, Log);
@@ -1556,7 +1636,43 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             gBS->Stall(3000000);
             Exec(&AppImageHandle);
             break;
+        case SKIP:
+            
+            // Had to declare a new var because "next = next->next" will update on assertion
+            skip_pos = AsciiStrDecimalToUintn(next->Name);
+
+            if (isOpSkipAllowed == TRUE) {
+              if (ENG == TRUE) {
+                UnicodeSPrint(Log, 512, u"Skipping %d commands\n\r", skip_pos);
+                LogToFile(LogFile, Log);
+              }
+              else
+              {
+                Print(L"Пропускаем %d команд\n\r", skip_pos);
+                UnicodeSPrint(Log, 512, u"Пропускаем %d команд\n\r", skip_pos);
+                LogToFile(LogFile, Log);
+              }
+              for (UINT8 i = 0; i < skip_pos - 1; i++) {
+                next = next->next;
+              }
+            }
+            else
+            {
+              if (ENG == TRUE) {
+                UnicodeSPrint(Log, 512, u"Last command returned: %r, skip not happened\n\r", Status);
+                LogToFile(LogFile, Log);
+              }
+              else
+              {
+                Print(L"Прошлая команда вернула: %r, переход не случился\n\r", Status);
+                UnicodeSPrint(Log, 512, u"Прошлая команда вернула: %r, переход не случился\n\r", Status);
+                LogToFile(LogFile, Log);
+              }
+            }
+            isOpSkipAllowed = FALSE;
+            break;
         case UNINSTALL_PROTOCOL:
+            isOpSkipAllowed = FALSE;
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing UninstallProtocol\n\r");
               LogToFile(LogFile, Log);
@@ -1593,8 +1709,10 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
               UnicodeSPrint(Log, 512, u"Протокол удален из %d дескрипторов\n\r", UninstallIndexes);
               LogToFile(LogFile, Log);
             }
+            isOpSkipAllowed = TRUE;
             break;
         case UPDATE_DB:
+            isOpSkipAllowed = FALSE;
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing UpdateDB\n\r");
               LogToFile(LogFile, Log);
@@ -1631,8 +1749,10 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
               UnicodeSPrint(Log, 512, u"DB обновлена\n\r");
               LogToFile(LogFile, Log);
             }
+            isOpSkipAllowed = TRUE;
             break;
         case GET_DB:
+            isOpSkipAllowed = FALSE;
             if (ENG == TRUE) {
               UnicodeSPrint(Log, 512, u"%a", "Executing GetAptioDB\n\r");
               LogToFile(LogFile, Log);
@@ -1672,6 +1792,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
               UnicodeSPrint(Log, 512, u"Размер: %x, Указатель: %x\n\r", DBSize, DBPointer);
               LogToFile(LogFile, Log);
             }
+            isOpSkipAllowed = TRUE;
             isDBThere = TRUE;
             Status = EFI_NOT_FOUND; //This is ok
             break;

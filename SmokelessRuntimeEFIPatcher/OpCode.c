@@ -689,19 +689,21 @@ GetAptioHiiDB(IN BOOLEAN BufferSizeOrPointer)
     UINT32 DataPointer;
   } HiiDbBlock_DATA;
 
-    EFI_STATUS Status;
-    EFI_GUID ExportDatabaseGuid = { 0x1b838190, 0x4625, 0x4ead, {0xab, 0xc9, 0xcd, 0x5e, 0x6a, 0xf1, 0x8f, 0xe0} };
+    EFI_STATUS Status = EFI_SUCCESS;
+    //EFI_GUID ExportDatabaseGuid = { 0x1b838190, 0x4625, 0x4ead, {0xab, 0xc9, 0xcd, 0x5e, 0x6a, 0xf1, 0x8f, 0xe0} };
     UINTN Size = 8;
     HiiDbBlock_DATA HiiDB; //The whole var is 8 bytes, I save it into 2 by 4
     UINTN BufferSize = 0, Pointer = 0, Result = 0;
     //-----------------------------------------------------
 
+    /* #include <Library/UefiRuntimeServicesTableLib.h>  Needed for gRT
     Status = gRT->GetVariable(
         L"HiiDB",
         &ExportDatabaseGuid,
         NULL,
         &Size,
         &HiiDB);
+    */
 
     if (Status == EFI_SUCCESS && Size != 0)
     {

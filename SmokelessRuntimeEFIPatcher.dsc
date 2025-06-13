@@ -36,5 +36,6 @@ StackCheckLib|MdePkg/Library/StackCheckLibNull/StackCheckLibNull.inf
   IntrinsicLib|CryptoPkg/Library/IntrinsicLib/IntrinsicLib.inf
   RngLib|MdePkg/Library/BaseRngLib/BaseRngLib.inf
   HandleParsingLib|ShellPkg/Library/UefiHandleParsingLib/UefiHandleParsingLib.inf
+
 [Components]
   SREPPkg/SmokelessRuntimeEFIPatcher/SmokelessRuntimeEFIPatcher.inf

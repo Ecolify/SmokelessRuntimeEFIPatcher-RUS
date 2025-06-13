@@ -26,7 +26,6 @@
 #include <Protocol/ShellParameters.h>             //Needed for GetArgs
 #include <Protocol/RegularExpressionProtocol.h>   //Needed for regex
 #include <Library/HiiLib.h>                       //Needed for fonts
-#include <Library/UefiRuntimeServicesTableLib.h>  //Needed for gRT
 
 //C2220 suppression due to log filename issues
 #pragma warning(disable:4459)

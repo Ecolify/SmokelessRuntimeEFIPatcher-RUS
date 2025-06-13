@@ -49,7 +49,7 @@
   gEdkiiFormDisplayEngineProtocolGuid           ## CONSUMES
   gEfiRegularExpressionProtocolGuid             ## CONSUMES
 [Guids]
-  gEfiAcpiTableGuid
-  gEfiAcpi20TableGuid
-  gEfiDxeServicesTableGuid
-  gHIIRussianFontGuid
+  gEfiAcpiTableGuid                             ## CONSUMES      
+  gEfiAcpi20TableGuid                           ## CONSUMES
+  gEfiDxeServicesTableGuid                      ## CONSUMES
+  gHIIRussianFontGuid                           ## PRODUCES
