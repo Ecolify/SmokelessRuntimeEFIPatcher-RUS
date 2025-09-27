@@ -1,4 +1,4 @@
-﻿#include "Utility.h"
+#include "Utility.h"
 
 CHAR16 *
 FindLoadedImageFileName(
@@ -8,7 +8,7 @@ FindLoadedImageFileName(
 {
     EFI_GUID *NameGuid;
     EFI_STATUS Status;
-    EFI_FIRMWARE_VOLUME2_PROTOCOL *Fv;
+    EFI_FIRMWARE_VOLUME2_PROTOCOL *Fv = NULL;
     VOID *Buffer;
     UINTN BufferSize;
     UINT32 AuthenticationStatus;
@@ -65,7 +65,7 @@ FindLoadedImageBufferSize(
 {
     EFI_GUID *NameGuid;
     EFI_STATUS Status;
-    EFI_FIRMWARE_VOLUME2_PROTOCOL *Fv;
+    EFI_FIRMWARE_VOLUME2_PROTOCOL *Fv = NULL;
     VOID *Buffer;
     UINTN BufferSize;
     UINT32 AuthenticationStatus;
@@ -127,13 +127,13 @@ LoadandRunImage(
     UINTN Index;
     EFI_HANDLE *SFS_Handles;
     EFI_STATUS Status = EFI_SUCCESS;
-    EFI_BLOCK_IO_PROTOCOL *BlkIo;
+    EFI_BLOCK_IO_PROTOCOL *BlkIo = NULL;
     EFI_DEVICE_PATH_PROTOCOL *FilePath;
     //-----------------------------------------------------
 
     Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiSimpleFileSystemProtocolGuid, NULL, &NumHandles, &SFS_Handles);
 
-    if (Status != EFI_SUCCESS)
+    if (EFI_ERROR(Status))
     {
         return Status;
     }
@@ -147,7 +147,7 @@ LoadandRunImage(
           ImageHandle, NULL,
           EFI_OPEN_PROTOCOL_GET_PROTOCOL);
 
-        if (Status != EFI_SUCCESS)
+        if (EFI_ERROR(Status))
         {
             return Status;
         }
@@ -155,13 +155,13 @@ LoadandRunImage(
         FilePath = FileDevicePath(SFS_Handles[Index], FileName);
         Status = gBS->LoadImage(FALSE, ImageHandle, FilePath, (VOID *)NULL, 0, AppImageHandle);
 
-        if (Status != EFI_SUCCESS)
+        if (EFI_ERROR(Status))
         {
             continue;
         }
 
         Status = gBS->StartImage(*AppImageHandle, &ExitDataSize, (CHAR16 **)NULL);
-        if (Status != EFI_SUCCESS)
+        if (EFI_ERROR(Status))
         {
             return EFI_NOT_FOUND;
         }
@@ -186,7 +186,7 @@ LocateAndLoadFvFromName(
     //EFI_FV_FILE_ATTRIBUTES Attributes;
     //UINTN Size;
     UINTN Index;
-    EFI_FIRMWARE_VOLUME2_PROTOCOL *FvInstance;
+    EFI_FIRMWARE_VOLUME2_PROTOCOL *FvInstance = NULL;
     //-----------------------------------------------------
 
     // FvStatus = 0; // Leftover from Smokeless, the function is a copy of LocateFvInstanceWithTables from AcpiPlatform.c
@@ -202,16 +202,12 @@ LocateAndLoadFvFromName(
         &HandleBuffer);
     if (EFI_ERROR(Status))
     {
-        if (ENG == TRUE) { Print(L"Сould not find any handle with the specified protocol\n"); }
-        else { Print(L"Не удалось найти ни одного дескриптора с указанным протоколом\n"); }
+        Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_NO_HANDLE), NULL), Status);
         return Status;
     }
 
-    if (ENG == TRUE) { Print(L"Found %d Instances\n\r", NumberOfHandles); }
-    else
-    {
-      Print(L"Всего найдено дескрипторов: %d\n\r", NumberOfHandles);
-    }
+    DEBUG_CODE(Print(L"Found %d Instances\n\r", NumberOfHandles););
+
     for (Index = 0; Index < NumberOfHandles; Index++)
     {
 
@@ -236,14 +232,10 @@ LocateAndLoadFvFromName(
             FileType = EFI_FV_FILETYPE_ALL;
             ZeroMem(&NameGuid, sizeof(EFI_GUID));
             Status = FvInstance->GetNextFile(FvInstance, Keys, &FileType, &NameGuid, &FileAttributes, &FileSize);
-            if (Status != EFI_SUCCESS)
+            if (EFI_ERROR(Status))
             {
-              if (ENG == TRUE) { Print(L"Breaking cause %r\n\r", Status); }
-                else
-                {
-                  Print(L"Причина остановки итерации: %r\n\r", Status);
-                }
-                break;
+              Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_BREAKING_CAUSE), NULL), Status);
+              break;
             }
             VOID *String;
             UINTN StringSize = 0;
@@ -252,17 +244,11 @@ LocateAndLoadFvFromName(
             Status = FvInstance->ReadSection(FvInstance, &NameGuid, EFI_SECTION_USER_INTERFACE, 0, &String, &StringSize, &AuthenticationStatus);
             if (StrCmp(Name, String) == 0)
             {
-              if (ENG == TRUE) { Print(L"Guid: %g, FileSize: %d, Name: %s, Type: %d\n\r", NameGuid, FileSize, String, FileType); }
-              else
-              {
-                Print(L"GUID: %g, Размер: %d, Имя: %s, Тип: %d\n\r", NameGuid, FileSize, String, FileType);
-              }
+                DEBUG_CODE(Print(L"Guid: %g, FileSize: %d, Name: %s, Type: %d\n\r", NameGuid, FileSize, String, FileType););
+
                 Status = FvInstance->ReadSection(FvInstance, &NameGuid, Section_Type, 0,(VOID **) Buffer, BufferSize, &AuthenticationStatus);
-                if (ENG == TRUE) { Print(L"Result %r\n\r", Status); }
-                else
-                {
-                  Print(L"Результат %r\n\r", Status);
-                }
+                Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SEARCH_RESULT), NULL), Status);
+
                 FreePool(String);
                 return EFI_SUCCESS;
             }
@@ -285,7 +271,7 @@ LocateAndLoadFvFromGuid(
   EFI_HANDLE *HandleBuffer;
   UINTN NumberOfHandles;
   UINTN Index;
-  EFI_FIRMWARE_VOLUME2_PROTOCOL *FvInstance;
+  EFI_FIRMWARE_VOLUME2_PROTOCOL *FvInstance = NULL;
   //-----------------------------------------------------
 
   //
@@ -299,19 +285,13 @@ LocateAndLoadFvFromGuid(
     &HandleBuffer);
   if (EFI_ERROR(Status))
   {
-    //
-    // Defined errors at this time are not found and out of resources.
-    //
-    if (ENG == TRUE) { Print(L"Сould not find any handle with the specified protocol\n"); }
-    else { Print(L"Не удалось найти ни одного дескриптора с указанным протоколом\n"); }
+    Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_NO_HANDLE), NULL), Status);
+
     return Status;
   }
 
-  if (ENG == TRUE) { Print(L"Found %d Instances\n\r", NumberOfHandles); }
-  else
-  {
-    Print(L"Всего найдено дескрипторов: %d\n\r", NumberOfHandles);
-  }
+  DEBUG_CODE(Print(L"Found %d Instances\n\r", NumberOfHandles););
+
   for (Index = 0; Index < NumberOfHandles; Index++)
   {
 
@@ -336,13 +316,9 @@ LocateAndLoadFvFromGuid(
       FileType = EFI_FV_FILETYPE_ALL;
       ZeroMem(&NameGuid, sizeof(EFI_GUID));
       Status = FvInstance->GetNextFile(FvInstance, Keys, &FileType, &NameGuid, &FileAttributes, &FileSize);
-      if (Status != EFI_SUCCESS)
+      if (EFI_ERROR(Status))
       {
-        if (ENG == TRUE) { Print(L"Breaking Cause %r\n\r", Status); }
-        else
-        {
-          Print(L"Причина остановки итерации: %r\n\r", Status);
-        }
+        Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_BREAKING_CAUSE), NULL), Status);
         break;
       }
       VOID *String;
@@ -350,22 +326,21 @@ LocateAndLoadFvFromGuid(
       UINT32 AuthenticationStatus;
       String = NULL;
       Status = FvInstance->ReadSection(FvInstance, &NameGuid, EFI_SECTION_USER_INTERFACE, 0, &String, &StringSize, &AuthenticationStatus);
-      /* Debug
-      if (ENG != TRUE) Print(L"Current GUID: %g\n\r", NameGuid);      //Current processing guid per While iteration
-      */
+
+      DEBUG_CODE(
+        // Debug
+        Print(L"Current GUID: %g\n\r", NameGuid);      //Current processing guid per While iteration
+      );
+
       if (CompareGuid(&GUID16, &NameGuid) == 1) //I can do via "&"
       {
-        if (ENG == TRUE) { Print(L"Found Guid: %g, FileSize: %d, Name: %s, Type: %d\n\r", NameGuid, FileSize, String, FileType); }
-        else
-        {
-          Print(L"GUID: %g, Размер: %d, Имя: %s, Тип: %d\n\r", NameGuid, FileSize, String, FileType);
-        }
+
+        DEBUG_CODE(Print(L"Found Guid: %g, FileSize: %d, Name: %s, Type: %d\n\r", NameGuid, FileSize, String, FileType););
+
         Status = FvInstance->ReadSection(FvInstance, &NameGuid, Section_Type, 0, (VOID **)Buffer, BufferSize, &AuthenticationStatus);
-        if (ENG == TRUE) { Print(L"Result Cause %r\n\r", Status); }
-        else
-        {
-          Print(L"Результат: %r\n\r", Status);
-        }
+
+        Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SEARCH_RESULT), NULL), Status);
+
         FreePool(String);
         return EFI_SUCCESS;
       }
@@ -377,7 +352,7 @@ LocateAndLoadFvFromGuid(
 
 EFI_STATUS
 RegexMatch(
-  IN UINT8 *DUMP,
+  IN UINT8 *Dump,
   IN CHAR8 *Pattern,
   IN UINT16 Size,
   IN EFI_REGULAR_EXPRESSION_PROTOCOL *Oniguruma,
@@ -385,33 +360,34 @@ RegexMatch(
 )
 {
   EFI_STATUS Status;
-  CHAR16 tmp[255] = { 0 };
-  CHAR16 DUMP16[255] = { 0 };
-  CHAR16 Pattern16[255] = { 0 };
-  UINTN CapturesCount = 0;  //Reserved for now
+  CHAR16 tmp[0x100] = { 0 };
+  CHAR16 Dump16[0x100] = { 0 };
+  CHAR16 Pattern16[0x100] = { 0 };
+  UINTN CapturesCount = 0;  //Reserved for now, as it's always 1.
   //-----------------------------------------------------
 
-  for (UINT16 i = 0; i < Size; i++) //Get string from buffer
+  Size = Size > 0x100 ? 0x100 : Size;
+  for (UINT16 i = 0; i < Size; i++) //Get string from UINT buffer
   {
-    UnicodeSPrint(tmp, 512, u"%02x", DUMP[i]);
+    UnicodeSPrint(tmp, 0x200, u"%02x", Dump[i]);
     //Print(L"Dump %s\n\r", tmp);
-    Status = StrCatS(DUMP16, sizeof(tmp) + 2, tmp);
+    Status = StrCatS(Dump16, sizeof(tmp) + 0x2, tmp);
   }
 
   UnicodeSPrint(Pattern16, sizeof(Pattern16), L"%a", Pattern);  //Convert Pattern string
 
-  //Debug
-  /*
-  Print(L"Append result: %r\n\r", Status);
-  Print(L"Strings Dump/Pattern %s / %s\n\r", &DUMP16, &Pattern16);
-  INTN m = StrCmp(DUMP16, Pattern16);
-  Print(L"Strings match? : %a\n\r", m ? L"False" : L"True"); //INT m = 0 is yes, any other means they dont
-  Print(L"DUMP16 : %d, Pattern16 : %d\n\r", StrLen(DUMP16), StrLen(Pattern16));
-  */
+  DEBUG_CODE(
+    //Debug
+    Print(L"Append result: %r\n\r", Status);
+    Print(L"Strings Dump/Pattern %s / %s\n\r", &Dump16, &Pattern16);
+    INTN m = StrCmp(Dump16, Pattern16);
+    Print(L"Strings match? : %a\n\r", m ? L"False" : L"True"); //INT m = 0 is yes, any other means they dont
+    Print(L"Dump16 : %d, Pattern16 : %d\n\r", StrLen(Dump16), StrLen(Pattern16));
+  );
 
   Status = Oniguruma->MatchString(
     Oniguruma,
-    DUMP16,
+    Dump16,
     Pattern16,
     NULL,
     CResult,
@@ -427,24 +403,20 @@ UINT8 *
 FindBaseAddressFromName(IN const CHAR16 *Name)
 {
     EFI_STATUS Status;
-    UINTN HandleSize = 0;
+    UINTN NumberOfHandles = 0;
     EFI_HANDLE *Handles;
     //-----------------------------------------------------
 
-    Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &HandleSize, NULL);
+    Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &NumberOfHandles, NULL);
     if (Status == EFI_BUFFER_TOO_SMALL)
     {
-        Handles = AllocateZeroPool(HandleSize * sizeof(EFI_HANDLE));
-        Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &HandleSize, Handles);
-        if (ENG == TRUE) { Print(L"Retrived %d Handles, with %r\n\r", HandleSize, Status); }
-        else
-        {
-          Print(L"Всего найдено дескрипторов: %d\n\r", HandleSize);
-        }
+        Handles = AllocateZeroPool(NumberOfHandles * sizeof(EFI_HANDLE));
+        Status = gBS->LocateHandle(ByProtocol, &gEfiLoadedImageProtocolGuid, NULL, &NumberOfHandles, Handles);
+        DEBUG_CODE(Print(L"Found %d Instances\n\r", NumberOfHandles););
     }
 
-    EFI_LOADED_IMAGE_PROTOCOL *LoadedImageProtocol;
-    for (UINTN i = 0; i < HandleSize; i++)
+    EFI_LOADED_IMAGE_PROTOCOL *LoadedImageProtocol = NULL;
+    for (UINTN i = 0; i < NumberOfHandles; i++)
     {
         Status = gBS->HandleProtocol(Handles[i], &gEfiLoadedImageProtocolGuid, (VOID **)&LoadedImageProtocol);  //Process every found handle
         if (Status == EFI_SUCCESS)
@@ -454,11 +426,7 @@ FindBaseAddressFromName(IN const CHAR16 *Name)
             {
                 if (StrCmp(Name, String) == 0)  //If SUCCESS, compare the handle' name with the one specified in cfg
                 {
-                  if (ENG == TRUE) { Print(L"Found %s at Address 0x%X\n\r", String, LoadedImageProtocol->ImageBase); }
-                  else
-                  {
-                    Print(L"Найден %s по смещению 0x%X\n\r", String, LoadedImageProtocol->ImageBase);
-                  }
+                    DEBUG_CODE(Print(L"Found %s at Address 0x%X\n\r", String, LoadedImageProtocol->ImageBase););
                     return LoadedImageProtocol->ImageBase;
                 }
             }

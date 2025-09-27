@@ -3,11 +3,13 @@
 #include <PiDxe.h>
 #include <Guid/FileInfo.h>
 #include <Guid/FileSystemInfo.h>
+#include <Guid/GlobalVariable.h>
 #include <Library/DebugLib.h>
 #include <Library/DevicePathLib.h>
 #include <Library/UefiApplicationEntryPoint.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
+#include <Library/UefiHiiServicesLib.h>           //Needed for strings
 #include <Library/MemoryAllocationLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/PrintLib.h>
@@ -24,16 +26,19 @@
 #include <Protocol/DisplayProtocol.h>
 #include <Protocol/HiiPopup.h>
 #include <Protocol/ShellParameters.h>             //Needed for GetArgs
-#include <Protocol/RegularExpressionProtocol.h>   //Needed for regex
-#include <Library/HiiLib.h>                       //Needed for fonts
+#include <Protocol/RegularExpressionProtocol.h>   //       for regex
+#include <Protocol/HiiPackageList.h>              //       for strings
+#include <Library/HiiLib.h>                       //       for fonts and strings
+#include <Library/UefiRuntimeServicesTableLib.h>  //       for gRT
+#include <Library/ShellLib.h>                     //       for FindNextFile
 
 //C2220 suppression due to log filename issues
 #pragma warning(disable:4459)
 #pragma warning(disable:4456)
 #pragma warning(disable:4244)
 
-//Set default lang Rus
-BOOLEAN ENG = FALSE;
+//Set default lang
+EFI_HII_HANDLE HiiHandle;
 
 //Initizalize log function
 VOID LogToFile(

@@ -1,28 +1,33 @@
 [Defines]
 	INF_VERSION                    = 0x00010006
 	BASE_NAME                      = SmokelessRuntimeEFIPatcher
-	FILE_GUID                      =  24ba59e6-8d34-4fe4-83a0-da8e478ecbfe
+	FILE_GUID                      = 24ba59e6-8d34-4fe4-83a0-da8e478ecbfe
 	MODULE_TYPE                    = UEFI_APPLICATION
 	VERSION_STRING                 = 0.1
 	ENTRY_POINT                    = SREPEntry
-
-
   UEFI_HII_RESOURCE_SECTION      = TRUE
+
 [Sources]
 	SmokelessRuntimeEFIPatcher.c
   Utility.c
   OpCode.c
   RussianFont.c
+  Strings.uni
+  Images.idf
+  Logo.bmp
 
 [Packages]
   SREPPkg/SmokelessRuntimeEFIPatcher.dec
 	MdePkg/MdePkg.dec
   MdeModulePkg/MdeModulePkg.dec
   CryptoPkg/CryptoPkg.dec
-  
+  ShellPkg/ShellPkg.dec
+
 [LibraryClasses]
   UefiApplicationEntryPoint
+  # UefiDriverEntryPoint
   UefiLib
+  UefiHiiServicesLib
   BaseLib
   HiiLib
   MemoryAllocationLib
@@ -32,6 +37,9 @@
   PrintLib
   UefiLib
   DevicePathLib
+  ShellLib
+  FileHandleLib
+  SortLib
 
 [Protocols]
   gEfiLoadedImageProtocolGuid                   ## CONSUMES
@@ -48,8 +56,11 @@
   gEfiHiiPopupProtocolGuid                      ## CONSUMES
   gEdkiiFormDisplayEngineProtocolGuid           ## CONSUMES
   gEfiRegularExpressionProtocolGuid             ## CONSUMES
+  gEfiHiiPackageListProtocolGuid                ## CONSUMES
+
 [Guids]
   gEfiAcpiTableGuid                             ## CONSUMES      
   gEfiAcpi20TableGuid                           ## CONSUMES
   gEfiDxeServicesTableGuid                      ## CONSUMES
+  gEfiGlobalVariableGuid                        ## CONSUMES
   gHIIRussianFontGuid                           ## PRODUCES

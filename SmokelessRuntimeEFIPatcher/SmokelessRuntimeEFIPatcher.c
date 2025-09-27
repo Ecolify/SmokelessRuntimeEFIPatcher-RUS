@@ -1,22 +1,18 @@
-﻿//Include sources
+﻿//“Pointer/Reference alignment” is right.
+
+//Include sources
 #include "Utility.h"
 #include "Opcode.h"
 
 //Specify app version
-#define SREP_VERSION L"0.1.9 RUS"
+#define SREP_VERSION L"0.2.0 Xazanavi edition RUS"
 
-//Get font data having external linkage
-extern EFI_WIDE_GLYPH gSimpleFontWideGlyphData[];
-extern UINT32 gSimpleFontWideBytes;
-extern EFI_NARROW_GLYPH gSimpleFontNarrowGlyphData[];
-extern UINT32 gSimpleFontNarrowBytes;
 
 EFI_BOOT_SERVICES *_gBS = NULL;
 EFI_RUNTIME_SERVICES *_gRS = NULL;
-EFI_FILE *LogFile = NULL;
 
-//Set log buffer size
-CHAR16 Log[512];
+EFI_FILE *LogFile = NULL;
+CHAR16 Log[0x200];
 
 //Declare two sets of named constants
 enum
@@ -26,10 +22,10 @@ enum
     REL_NEG_OFFSET,
     REL_POS_OFFSET
 };
+
 enum OPCODE
 {
-    NO_OP,
-    COMPATIBILITY,
+    NOP,
     LOADED,
     LOADED_GUID_PE,
     LOADED_GUID_TE,
@@ -40,7 +36,7 @@ enum OPCODE
     PATCH,
     PATCH_FAST,
     UNINSTALL_PROTOCOL,
-    UPDATE_DB,
+    COMPATIBILITY,
     GET_DB,
     EXEC,
     SKIP
@@ -82,6 +78,7 @@ typedef struct {
 VOID
 LogToFile(IN EFI_FILE *LogFile, IN CHAR16 *String)
 {
+        if (LogFile == NULL) { return; }
         UINTN Size = StrLen(String) * 2;      //Size variable equals to the string size, multiplies by 2 cuz Unicode is CHAR16
         LogFile->Write(LogFile,&Size,String); //EFI_FILE_WRITE (Filename, size, the actual string to write)
         LogFile->Flush(LogFile);              //Flushes all modified data associated with a file to a device
@@ -100,104 +97,45 @@ Add_OP_CODE(IN struct OP_DATA *Start, IN OUT struct OP_DATA *opCode)
     opCode->prev = next;
 }
 
-//Detect OPCODEs in read buffer and dispatch immediatelly. Currently unused.
-static VOID
-PrintOPChain(IN struct OP_DATA *Start)
-{
-    struct OP_DATA *next = Start;
-    while (next != NULL)
-    {
-        UnicodeSPrint(Log,512,u"%s","OPCODE: ");
-        LogToFile(LogFile,Log);
-        switch (next->ID)
-        {
-        case NO_OP:
-            UnicodeSPrint(Log,512,u"%a","NOP\n\r");
-            LogToFile(LogFile,Log);
-            break;
-        case LOADED:
-            UnicodeSPrint(Log,512,u"%a","LOADED\n\r");
-            LogToFile(LogFile,Log);
-            break;
-        case COMPATIBILITY:
-            UnicodeSPrint(Log,512,u"%a","Compatibility\n\r");
-            LogToFile(LogFile,Log);
-            break;
-        case LOADED_GUID_PE:
-            UnicodeSPrint(Log,512,u"%a","LOADED_GUID_PE\n\r");
-            LogToFile(LogFile,Log);
-            break;
-        case LOADED_GUID_TE:
-            UnicodeSPrint(Log,512,u"%a","LOADED_GUID_TE\n\r");
-            LogToFile(LogFile,Log);
-            break;
-        case LOAD_FS:
-            UnicodeSPrint(Log,512,u"%a","LOAD_FS\n\r");
-            LogToFile(LogFile,Log);
-            UnicodeSPrint(Log,512,u"%a","\t FileName %a\n\r", next->Name);
-            LogToFile(LogFile,Log);
-            break;
-        case LOAD_FV:
-            UnicodeSPrint(Log,512,u"%a","LOAD_FV\n\r");
-            LogToFile(LogFile,Log);
-            UnicodeSPrint(Log,512,u"%a","\t FileName %a\n\r", next->Name);
-            LogToFile(LogFile,Log);
-            break;
-        case LOAD_GUID_PE:
-            UnicodeSPrint(Log,512,u"%a","LOAD_GUID\n\r");
-            LogToFile(LogFile,Log);
-            UnicodeSPrint(Log,512,u"%a","\t GUID %a\n\r", next->Name);
-            LogToFile(LogFile,Log);
-            break;
-        case PATCH:
-            UnicodeSPrint(Log,512,u"%a","PATCH\n\r");
-            LogToFile(LogFile,Log);
-            break;
-        case PATCH_FAST:
-            UnicodeSPrint(Log, 512, u"%a","PATCH_FAST\n\r");
-            LogToFile(LogFile, Log);
-            break;
-        case EXEC:
-            UnicodeSPrint(Log,512,u"%a","EXEC\n\r");
-            LogToFile(LogFile,Log);
-            break;
-        case UNINSTALL_PROTOCOL:
-            UnicodeSPrint(Log,512,u"%a","UNINSTALL_PROTOCOL\n\r");
-            LogToFile(LogFile,Log);
-            break;
-        case GET_DB:
-            UnicodeSPrint(Log,512,u"%a","GET_DB\n\r");
-            LogToFile(LogFile,Log);
-            break;
-
-        default:
-            break;
-        }
-        next = next->next;
-    }
-}
-
 //Prints those 16 symbols wide dumps
 static VOID
-PrintDump(IN UINT16 Size, IN UINT8 *DUMP)
+PrintDump(IN UINT16 Size, IN UINT8 *Dump)
 {
     for (UINT16 i = 0; i < Size; i++)
     {
         if (i % 0x10 == 0)
         {
-            UnicodeSPrint(Log,512,u"%a","\n\t");
+            UnicodeSPrint(Log,0x200,u"%a","\n\t");
             LogToFile(LogFile,Log);
         }
-        UnicodeSPrint(Log,512,u"%02x", DUMP[i]);
+        UnicodeSPrint(Log,0x200,u"%02x", Dump[i]);
         LogToFile(LogFile,Log);
     }
-    UnicodeSPrint(Log,512,u"%a","\n\t");
+    UnicodeSPrint(Log,0x200,u"%a","\n\t");
     LogToFile(LogFile,Log);
 }
 
+//Prints Search Result
+static VOID
+PrintSearchResult(IN EFI_STATUS Status)
+{
+    Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SEARCH_RESULT), NULL), Status);
+    UnicodeSPrint(Log, 0x200, u"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SEARCH_RESULT), NULL), Status);
+    LogToFile(LogFile, Log);
+}
+
+//Prints Case String
+static VOID
+PrintCase(IN CHAR16 *CaseName)
+{
+    Print(L"%s%s\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_BASIC_CASE), NULL), CaseName);
+    UnicodeSPrint(Log, 0x200, u"%s%s\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_BASIC_CASE), NULL), CaseName);
+    LogToFile(LogFile, Log);
+}
+
 //Simple font support function
-static UINT8
-*CreateSimpleFontPkg(
+static UINT8 *
+CreateSimpleFontPkg(
   IN EFI_WIDE_GLYPH *WideGlyph,
   IN UINT32 WideGlyphSizeInBytes,
   IN EFI_NARROW_GLYPH *NarrowGlyph,
@@ -221,48 +159,255 @@ static UINT8
   return FontPackage;
 }
 
-//Main function, entry point
-EFI_STATUS EFIAPI
-SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
-  /*-----------------------------------------------------------------------------------*/
-  //
-  //For the font
-  //
-  EFI_GUID gHIIRussianFontGuid;
-  UINT8 *FontPackage = CreateSimpleFontPkg(gSimpleFontWideGlyphData,
-                                          gSimpleFontWideBytes,
-                                          gSimpleFontNarrowGlyphData,
-                                          gSimpleFontNarrowBytes);
+static EFI_STATUS
+CheckArgs(IN EFI_HANDLE ImageHandle) {
+    EFI_STATUS Status;
+    EFI_STATUS SetVarStatus;
+    EFI_SHELL_PARAMETERS_PROTOCOL *ShellParameters = NULL;
+    Status = gBS->HandleProtocol(
+    ImageHandle,
+    &gEfiShellParametersProtocolGuid,
+    (VOID **)&ShellParameters);
 
-  EFI_HII_HANDLE Handle = HiiAddPackages(&gHIIRussianFontGuid, //This is OK
-                                         NULL,
-                                         FontPackage,
-                                         NULL,
-                                         NULL);
-  
-  FreePool(FontPackage);
+    Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SHELL_STATUS), "en-GB"), Status);
+    UnicodeSPrint(Log, 0x200, u"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SHELL_STATUS), "en-GB"), Status);
 
-  if (Handle == NULL)
-  {
-    Print(L"Error! Can't Add Any more Lang Packages! Futher messages may be crippled!\n\n");
+  if (Status == EFI_SUCCESS && ShellParameters->Argc > 1) {
+    if (!StrCmp(ShellParameters->Argv[1], L"ENG")) //Check for ENG arg, Argv[0] is app name
+    {
+
+      SetVarStatus = gRT->SetVariable(
+        L"PlatformLang",
+        &gEfiGlobalVariableGuid,
+        0x7,
+        0x6,
+        L"en-GB"
+      );
+
+      if (EFI_ERROR(SetVarStatus))
+      {
+        Print(L"%s%r\n\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_LANG_VAR_WP), "en-GB"), SetVarStatus);
+        gBS->Stall(3000000);
+        return Status;
+      }
+
+      gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_ENG_MODE), "en-GB"));
+      return EFI_SUCCESS;
+    }
+    else
+    {
+      //Reach this if arg is not "ENG" and there's more than 1
+      Print(L"%s%s\n\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_INVALID_LAUNCH_PARM), "en-GB"), ShellParameters->Argv[1]);
+      gBS->Stall(3000000);
+      gBS->Exit(ImageHandle, 0, 0, 0);
+    }
   }
-  /*-----------------------------------------------------------------------------------*/
+  else
+  {
+    if (Status != EFI_SUCCESS) {
+      gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_LANG_SWITCH_DISABLED), "en-GB"));
+    };
+  }
+  
+  gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_RUS_MODE), "en-GB"));
+  return Status;
+}
 
+//Entry point
+EFI_STATUS EFIAPI
+SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable) {
     EFI_STATUS Status;
     EFI_HANDLE AppImageHandle;
     EFI_HANDLE_PROTOCOL HandleProtocol;
-    EFI_LOADED_IMAGE_PROTOCOL *ImageInfo;
-    EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
-    EFI_SHELL_PARAMETERS_PROTOCOL *ShellParameters;
-    EFI_REGULAR_EXPRESSION_PROTOCOL *RegularExpressionProtocol;
-    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *FileSystem;
+    EFI_REGULAR_EXPRESSION_PROTOCOL *RegularExpressionProtocol = NULL;
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *FileSystem = NULL;
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *GraphicsOutput = NULL;
+    EFI_LOADED_IMAGE_PROTOCOL *ImageInfo = NULL;
+    EFI_LOADED_IMAGE_PROTOCOL *LoadedImage = NULL;
+    EFI_HII_PACKAGE_LIST_HEADER *PackageList = NULL;
+    EFI_IMAGE_INPUT Input;
     EFI_FILE *Root;
     EFI_FILE *ConfigFile;
-    CHAR16 FileName[255];
+
+    gBS->SetWatchdogTimer(0, 0, 0, 0); //Disable watchdog so the system doesn't reboot by timer
 
     /*-----------------------------------------------------------------------------------*/
     //
-    //For Regex
+    //Locate HII database and HII image protocols, retrieve HII packages from ImageHandle
+    //
+
+    // Try to open GOP first
+    Status = gBS->HandleProtocol (gST->ConsoleOutHandle, &gEfiGraphicsOutputProtocolGuid, (VOID **)&GraphicsOutput);
+    if (EFI_ERROR(Status)) {
+      return EFI_UNSUPPORTED;
+    }
+
+    UINT32 SizeOfX = GraphicsOutput->Mode->Info->HorizontalResolution;
+    UINT32 SizeOfY = GraphicsOutput->Mode->Info->VerticalResolution;
+
+    Status = gBS->LocateProtocol(&gEfiHiiDatabaseProtocolGuid, NULL, (VOID **)&gHiiDatabase);
+    if (EFI_ERROR(Status)) {
+        Print(L"Unable to locate HII Database!\n");
+        return EFI_NOT_STARTED;
+    }
+
+    Status = gBS->LocateProtocol(&gEfiHiiImageProtocolGuid, NULL, (VOID **)&gHiiImage);
+    if (EFI_ERROR(Status)) {
+        Print(L"Unable to locate HII Image protocol!\n");
+        return EFI_NOT_STARTED;
+    }
+
+    Status = gBS->OpenProtocol(
+      ImageHandle,
+      &gEfiHiiPackageListProtocolGuid,
+      (VOID **)&PackageList,
+      ImageHandle, NULL,
+      EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+
+    if (EFI_ERROR(Status)) {
+        Print(L"HII Packages not found in PE/COFF resource section!\n");
+        return Status;
+    }
+
+    Status = gHiiDatabase->NewPackageList(gHiiDatabase, PackageList, NULL, &HiiHandle);
+    if (EFI_ERROR(Status))
+    {
+      gST->ConOut->OutputString(gST->ConOut, L"Unable to register more HII Package!\n\n\r");
+      return Status;
+    }
+
+    /*-----------------------------------------------------------------------------------*/
+    //
+    //Create font
+    //
+
+    //Get font data having external linkage
+    extern EFI_WIDE_GLYPH gSimpleFontWideGlyphData[];
+    extern UINT32 gSimpleFontWideBytes;
+    extern EFI_NARROW_GLYPH gSimpleFontNarrowGlyphData[];
+    extern UINT32 gSimpleFontNarrowBytes;
+    EFI_GUID gHIIRussianFontGuid;
+
+    UINT8 *FontPackage = CreateSimpleFontPkg(
+      gSimpleFontWideGlyphData,
+      gSimpleFontWideBytes,
+      gSimpleFontNarrowGlyphData,
+      gSimpleFontNarrowBytes);
+
+    EFI_HII_HANDLE FontHandle = HiiAddPackages(
+      &gHIIRussianFontGuid, //This is OK
+      NULL,
+      FontPackage,
+      NULL,
+      NULL);
+
+    FreePool(FontPackage);
+
+    if (FontHandle == NULL)
+    {
+      gST->ConOut->OutputString(gST->ConOut, L"Error! Unable to add any more font packages!\n\n\r");
+    }
+
+    /*-----------------------------------------------------------------------------------*/
+    //
+    //Draw logo and welcoming message
+    //
+
+    Status = gHiiImage->GetImage(gHiiImage, HiiHandle, IMAGE_TOKEN(IMAGE_XAZANAVI_EDITION), &Input);
+    if (EFI_ERROR(Status)) {
+        Print(L"Unable to locate logo!\n");
+        return EFI_NOT_STARTED;
+    }
+
+    UINTN PicSize = Input.Height * Input.Width * sizeof(EFI_GRAPHICS_OUTPUT_BLT_PIXEL);
+    EFI_PHYSICAL_ADDRESS InputBuffer;
+
+    Status = gBS->AllocatePages(
+      AllocateAnyPages,
+      EfiLoaderData,
+      EFI_SIZE_TO_PAGES(PicSize),
+      &InputBuffer);
+    if (EFI_ERROR(Status)) {
+        Print(L"Unable to allocate Buffer!\n");
+        return EFI_NOT_STARTED;
+    }
+
+    EFI_GRAPHICS_OUTPUT_BLT_PIXEL *Logo = (EFI_GRAPHICS_OUTPUT_BLT_PIXEL*)(UINTN)InputBuffer;
+    CopyMem(Logo, Input.Bitmap, PicSize);
+    gST->ConOut->Reset(gST->ConOut, FALSE);
+
+    Status = GraphicsOutput->Blt(
+                                GraphicsOutput,
+                                Logo,
+                                EfiBltBufferToVideo,
+                                0,
+                                0,
+                                (UINTN)(SizeOfX - Input.Width) / 2, //Center Top
+                                (UINTN)SizeOfY - SizeOfY,
+                                Input.Width,
+                                Input.Height,
+                                Input.Width * sizeof(EFI_GRAPHICS_OUTPUT_BLT_PIXEL));
+
+    DEBUG_CODE(
+      //Debug
+      Print(L"Blt start pos: %d x %d. Status: %r\n\r", (UINTN)(SizeOfX - Input.Width) / 2, 0, Status);
+    );
+
+    gST->ConOut->SetCursorPosition(gST->ConOut, 0, 4);
+    Print(L"Welcome to Smokeless Runtime EFI Patcher %s\n\r", SREP_VERSION);
+    gBS->Stall(1000000);
+
+    /*-----------------------------------------------------------------------------------*/
+    //
+    //Setup the program depending on the presence of arguments
+    //
+    CheckArgs(ImageHandle);
+
+    /*-----------------------------------------------------------------------------------*/
+    //
+    //Get log
+    //
+    EFI_INPUT_KEY Key;
+    UINT8 Delay;
+
+    HandleProtocol = SystemTable->BootServices->HandleProtocol;
+    HandleProtocol(ImageHandle, &gEfiLoadedImageProtocolGuid, (void **)&LoadedImage);
+    HandleProtocol(LoadedImage->DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (void **)&FileSystem);
+    FileSystem->OpenVolume(FileSystem, &Root);
+
+    gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_PRESS_L), NULL));
+    for ( Status = EFI_UNSUPPORTED, Delay = 0x4; Delay != 0 && EFI_ERROR(Status); Delay--)
+    {
+      gBS->Stall(1000000);
+      Status = gST->ConIn->ReadKeyStroke(gST->ConIn, &Key);
+    }
+    if ((Status == EFI_SUCCESS) && (Key.UnicodeChar == L'l') && (Key.ScanCode == SCAN_NULL)) {
+
+      Status = Root->Open(Root, &LogFile, L"SREP.log", EFI_FILE_MODE_WRITE | EFI_FILE_MODE_READ | EFI_FILE_MODE_CREATE, 0);
+
+      //File already exists, delete it.
+      if (Status == EFI_SUCCESS) {
+        LogFile->Delete(LogFile);
+        Status = Root->Open(Root, &LogFile, L"SREP.log", EFI_FILE_MODE_WRITE | EFI_FILE_MODE_READ | EFI_FILE_MODE_CREATE, 0);
+        gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_DEL_LOG), NULL));
+        UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_DEL_LOG), NULL));
+        LogToFile(LogFile, Log);
+      }
+      else
+      {
+        gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_LOG_OPEN_FAIL), NULL));
+        gBS->Stall(3000000);
+        return Status;
+      }
+    }
+    else
+    {
+      gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_LOG_CANCEL), NULL));
+    }
+
+    /*-----------------------------------------------------------------------------------*/
+    //
+    //Init Regex
     //
     EFI_HANDLE *HandleBuffer;
     HandleBuffer = NULL;
@@ -288,17 +433,9 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
     };
     if (Status == EFI_NOT_FOUND)
     {
-      if (ENG == TRUE) {
-        Print(L"Failed on Locating RegularExpressionProtocol: %r\n\r", Status);
-        UnicodeSPrint(Log, 512, L"Failed on Locating RegularExpressionProtocol: %r\n\r", Status);
-        LogToFile(LogFile, Log);
-      }
-      else
-      {
-        Print(L"Зависимости не найдены: RegularExpressionProtocol\nУбедитесь что файл Oniguruma.efi доступен\n\r");
-        UnicodeSPrint(Log, 512, u"Не хватает зависимостей, причина: %r\n", Status);
-        LogToFile(LogFile, Log);
-      }
+      gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_FAILED_REGEX), NULL));
+      UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_FAILED_REGEX), NULL));
+      LogToFile(LogFile, Log);
       gBS->Stall(3000000);
       return Status;
     }
@@ -315,190 +452,109 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
       Status = gBS->HandleProtocol(
         HandleBuffer[Index],
         &gEfiRegularExpressionProtocolGuid,
-        (VOID**)&RegularExpressionProtocol
+        (VOID **)&RegularExpressionProtocol
       );
     }
 
-  /*-----------------------------------------------------------------------------------*/
-
-  //Setup the program depending on the presence of arguments
-  Status = gBS->HandleProtocol(
-    ImageHandle,
-    &gEfiShellParametersProtocolGuid,
-    (VOID **) &ShellParameters
-  );
-
-  Print(L"Welcome to Smokeless Runtime EFI Patcher %s\n\r", SREP_VERSION);
-
-  if (Status != EFI_UNSUPPORTED && ShellParameters->Argc == 2) {
-      if (!StrCmp(ShellParameters->Argv[1], L"ENG")) //Check for ENG arg, Argv[0] is app name
-      {
-        ENG = TRUE;
-        Print(L"English mode\n\n");
-        goto SetupExit;
-      }
-      //Reach this if arg is not "ENG"
-      Print(L"ShellParameters init status: %r\n\rEntered argument: %s\n\n\r", Status, ShellParameters->Argv[1]);
-      gBS->Stall(3000000);
-      goto SetupExit;
-  }
-  if (Status != EFI_SUCCESS)
-  {
-    Print(L"Switch to English is disabled due to the outdated UEFI shell\n\n");
-  }
-  SetupExit:
-
-    gBS->SetWatchdogTimer(0, 0, 0, 0); //Disable watchdog so the system doesn't reboot by timer
-
-    HandleProtocol = SystemTable->BootServices->HandleProtocol;
-    HandleProtocol(ImageHandle, &gEfiLoadedImageProtocolGuid, (void **)&LoadedImage);
-    HandleProtocol(LoadedImage->DeviceHandle, &gEfiSimpleFileSystemProtocolGuid, (void **)&FileSystem);
-    FileSystem->OpenVolume(FileSystem, &Root);
-
-    //Get log
-    Status = Root->Open(Root, &LogFile, L"SREP.log", EFI_FILE_MODE_WRITE | EFI_FILE_MODE_READ, 0);
-
-    //File already exists, delete it.
-    if (Status == EFI_SUCCESS) {
-      LogFile->Delete(LogFile);
-      if (ENG == TRUE) {
-        Print(L"The old log was deleted\n\r");
-      }
-      else
-      {
-        Print(L"Старый лог был удалён\n\r");
-      }
-    }
-    Status = Root->Open(Root, &LogFile, L"SREP.log", EFI_FILE_MODE_WRITE | EFI_FILE_MODE_READ | EFI_FILE_MODE_CREATE, 0);
-
-    if (Status != EFI_SUCCESS)
-    {
-        if (ENG == TRUE) {
-          Print(L"Failed on Opening Log File: %r\n\r", Status);
-          UnicodeSPrint(Log, 512, L"Failed on Opening Log File: %r\n\r", Status);
-          LogToFile(LogFile, Log);
-        }
-        else
-        {
-          Print(L"Не удалось подготовить логирование, причина: %r,\nУбедитесь что накопитель в формате FAT\n\r", Status);
-          UnicodeSPrint(Log, 512, u"Не удалось подготовить логирование: %r\nУбедитесь что накопитель в формате FAT\n\r", Status);
-          LogToFile(LogFile, Log);
-        }
-        gBS->Stall(3000000);
-        return Status;
-    }
-
-    if (ENG == TRUE) {
-      UnicodeSPrint(Log, 512, u"SREP Launched\n\r");
-      LogToFile(LogFile, Log);
-    }
-    else
-    {
-      Print(L"SREP запущен\n\r");
-      UnicodeSPrint(Log, 512, u"SREP запущен\n\r");
-      LogToFile(LogFile, Log);
-    }
-    UnicodeSPrint(FileName, sizeof(FileName), u"%a", "SREP_Config.cfg");
-    Status = Root->Open(Root, &ConfigFile, FileName, EFI_FILE_MODE_READ, 0);
-    if (Status != EFI_SUCCESS)
-    {
-        if (ENG == TRUE) {
-          Print(L"Failed on Opening cfg\n\r");
-          UnicodeSPrint(Log, 512, u"Failed on Opening cfg: %r\n\r", Status);
-          LogToFile(LogFile, Log);
-        }
-        else
-        {
-          Print(L"Не удалось открыть SREP_Config.cfg\n\r");
-          UnicodeSPrint(Log, 512, u"Не удалось открыть конфиг, причина: %r\n\r", Status);
-          LogToFile(LogFile, Log);
-        }
-        gBS->Stall(3000000);
-        return Status;
-    }
-   if (ENG == TRUE) {
-     UnicodeSPrint(Log, 512, u"%a", "Opened Config\n\r");
-     LogToFile(LogFile, Log);
-   }
-   else
-   {
-     Print(L"SREP_Config.cfg найден\n\r");
-     UnicodeSPrint(Log, 512, u"Конфиг открыт\n\r");
-     LogToFile(LogFile, Log);
-   }
-
-    //Check config
-    EFI_GUID gFileInfo = EFI_FILE_INFO_ID;
+    /*-----------------------------------------------------------------------------------*/
+    //
+    //Process cfg file
+    //
     EFI_FILE_INFO *FileInfo = NULL;
+    BOOLEAN isLastFile = FALSE;
+    INTN ShellNextFileMemCmp = FALSE;
+
+    Status = ShellFindFirstFile(Root, &FileInfo);
+
+    DEBUG_CODE(
+      //Debug
+      Print(u"First file in the root dir: %s\n\r", FileInfo->FileName);
+    );
+
+    //File search cycle
+    while (!EFI_ERROR(Status) && !isLastFile)
+    {
+      //Check whether file has .cfg extension
+      ShellNextFileMemCmp = CompareMem((VOID *)u".cfg", FileInfo->FileName + StrnLenS(FileInfo->FileName, 0x100) - 0x4, 0x8);
+      if (!ShellNextFileMemCmp)
+      {
+        Print(u"Found config file: %s\n\r", FileInfo->FileName);
+        break;
+      }
+
+      DEBUG_CODE(
+        //Debug
+        CHAR16 ShellNextFileStr[0x100] = { 0 };
+        CopyMem(ShellNextFileStr, FileInfo->FileName + StrnLenS(FileInfo->FileName, 0x100) - 0x4, 0x8);
+        Print(u"Last 4 chars(extension): \"%s\", and Result: %d\n\r", ShellNextFileStr, ShellNextFileMemCmp);
+      );
+
+      Status = ShellFindNextFile(Root, FileInfo, &isLastFile);
+    }
+    if (FileInfo == NULL || EFI_ERROR(Status))
+    {
+      gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_CFG_SEARCH_FAIL), NULL));
+      UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_CFG_SEARCH_FAIL), NULL));
+      LogToFile(LogFile, Log);
+      gBS->Stall(3000000);
+      return Status;
+    }
+
+    //Now open file
+    Status = Root->Open(Root, &ConfigFile, FileInfo->FileName, EFI_FILE_MODE_READ, 0);
+    if (EFI_ERROR(Status))
+    {
+      gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_CFG_OPEN_FAIL), NULL));
+      UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_CFG_OPEN_FAIL), NULL));
+      LogToFile(LogFile, Log);
+      gBS->Stall(3000000);
+      return Status;
+    }
+
+
+    //Get config info
+    EFI_GUID gFileInfo = EFI_FILE_INFO_ID;
     UINTN FileInfoSize = 0;
     Status = ConfigFile->GetInfo(ConfigFile, &gFileInfo, &FileInfoSize, &FileInfo);
     if (Status == EFI_BUFFER_TOO_SMALL)
     {
         FileInfo = AllocatePool(FileInfoSize);
         Status = ConfigFile->GetInfo(ConfigFile, &gFileInfo, &FileInfoSize, FileInfo);
-        if (Status != EFI_SUCCESS)
+        if (EFI_ERROR(Status))
         {
-            if (ENG == TRUE) {
-              Print(L"Failed Getting SREP_Config Info\n\r");
-              UnicodeSPrint(Log, 512, u"Failed Getting SREP_Config Info: %r\n\r", Status);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Не удалось получить данные о файле\n\r");
-              UnicodeSPrint(Log, 512, u"Не удалось получить данные о файле, причина: %r\n\r", Status);
-              LogToFile(LogFile, Log);
-            }
+            gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_CFG_OPEN_FAIL), NULL));
+            UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_CFG_OPEN_FAIL), NULL));
+            LogToFile(LogFile, Log);
             gBS->Stall(3000000);
             return Status;
         }
     }
     UINTN ConfigDataSize = FileInfo->FileSize + 1; //Add Last null Terminator
-    if (ENG == TRUE) {
-      UnicodeSPrint(Log, 512, u"Config Size: 0x%x\n\r", ConfigDataSize - 1);  //-1 to exclude Last null Terminator from size
-      LogToFile(LogFile, Log);
-    }
-    else
-    {
-      UnicodeSPrint(Log, 512, u"Размер конфига в HEX: 0x%x\n\r", ConfigDataSize - 1);
-      LogToFile(LogFile, Log);
-    }
+    Print(L"%s%X\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_CFG_SIZE), NULL), ConfigDataSize - 1);
+    UnicodeSPrint(Log, 0x200, u"%s%x\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_CFG_SIZE), NULL), ConfigDataSize - 1);  //-1 to exclude Last null Terminator from size
+    LogToFile(LogFile, Log);
+
     CHAR8 *ConfigData = AllocateZeroPool(ConfigDataSize);
     FreePool(FileInfo);
 
-    //Get config
+    //Now try reading file
     Status = ConfigFile->Read(ConfigFile, &ConfigDataSize, ConfigData);
-    if (Status != EFI_SUCCESS)
+    if (EFI_ERROR(Status))
     {
-        if (ENG == TRUE) {
-          Print(L"Failed on Reading SREP_Config\n\r");
-          UnicodeSPrint(Log, 512, u"Failed on Reading SREP_Config: %r\n\r", Status);
-          LogToFile(LogFile, Log);
-        }
-        else
-        {
-          Print(L"Не удалось прочитать конфиг\n\r");
-          UnicodeSPrint(Log, 512, u"Не удалось прочитать конфиг, причина: %r\n\r", Status);
-          LogToFile(LogFile, Log);
-        }
-        gBS->Stall(3000000);
-        return Status;
-    }
-    if (ENG == TRUE) {
-      Print(L"Parsing Config\n\r");
-      UnicodeSPrint(Log, 512, u"%a", "Parsing Config\n\r");
+      gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_CFG_OPEN_FAIL), NULL));
+      UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_CFG_OPEN_FAIL), NULL));
       LogToFile(LogFile, Log);
-    }
-    else
-    {
-      Print(L"Начало обработки данных\n\r");
-      UnicodeSPrint(Log, 512, u"Начало обработки данных\n\r");
-      LogToFile(LogFile, Log);
+      gBS->Stall(3000000);
+      return Status;
     }
     ConfigFile->Close(ConfigFile);
-    if (ENG != TRUE) {
-      Print(L"Стираем ненужные переносы строк\n\r");
-    }
+
+    //Reach here if reading went fine
+    gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_PARSING), NULL));
+    UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_PARSING), NULL));
+    LogToFile(LogFile, Log);
+
+    //Stripping NewLine, Carriage and Return
     for (UINTN i = 0; i < ConfigDataSize; i++)
     {
         if (ConfigData[i] == '\n' || ConfigData[i] == '\r' || ConfigData[i] == '\t')
@@ -508,16 +564,17 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
     }
     UINTN curr_pos = 0;
 
-    //Read config data, and dispatch
+    //Config data parsing vars
     struct OP_DATA *Start = AllocateZeroPool(sizeof(struct OP_DATA));
     struct OP_DATA *Prev_OP;
-    Start->ID = NO_OP;
+    Start->ID = 0;
     Start->next = NULL;
     BOOLEAN NullByteSkipped = FALSE;
 
     //Regex match var
     CHAR16 *Pattern16 = NULL;
 
+    //Fill OP_DATA accroding to ConfigData
     while (curr_pos < ConfigDataSize)
     {
 
@@ -537,53 +594,24 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
         }
         else
         {
-          if (ENG == TRUE) {
-            Print(L"Current Parsing %a\n\r", &ConfigData[curr_pos]);
-            UnicodeSPrint(Log, 512, u"Current Parsing %a\n\r", &ConfigData[curr_pos]);
-            LogToFile(LogFile, Log);
-          }
-          else
-          {
-            Print(L"В данный момент обрабатываем строку %a\n\r", &ConfigData[curr_pos]);
-            UnicodeSPrint(Log, 512, u"В данный момент обрабатываем строку %a\n\r", &ConfigData[curr_pos]);
-            LogToFile(LogFile, Log);
-          }
+          Print(L"%s%a\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_CURRENT_LINE), NULL), &ConfigData[curr_pos]);
+          UnicodeSPrint(Log, 0x200, u"%s%a\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_CURRENT_LINE), NULL), &ConfigData[curr_pos]);
+          LogToFile(LogFile, Log);
         }
         if (AsciiStrStr(&ConfigData[curr_pos], "End"))
         {
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "End OP Detected\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Обнаружен арг. End, операции над дескриптором доб. в очередь\n\r");
-              UnicodeSPrint(Log, 512, u"Обнаружен арг. End\n\r");
-              LogToFile(LogFile, Log);
-            }
-            continue;
+          gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_OP_END), NULL));
+          UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_OP_END), NULL));
+          LogToFile(LogFile, Log);
+          continue;
         }
         if (AsciiStrStr(&ConfigData[curr_pos], "Op"))
         {
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "OP Detected\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              UnicodeSPrint(Log, 512, u"Обнаружена OP\n\r");
-              LogToFile(LogFile, Log);
-            }
             curr_pos += 3;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Command %a\n\r", &ConfigData[curr_pos]);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              UnicodeSPrint(Log, 512, u"Команда %a\n\r", &ConfigData[curr_pos]);
-              LogToFile(LogFile, Log);
-            }
+            Print(L"%s%a\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_COMMAND), NULL), &ConfigData[curr_pos]);
+            UnicodeSPrint(Log, 0x200, u"%s%a\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_COMMAND), NULL), &ConfigData[curr_pos]);
+            LogToFile(LogFile, Log);
+
             if (AsciiStrStr(&ConfigData[curr_pos], "LoadFromFS"))
             {
               Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
@@ -656,7 +684,9 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "Exec"))
             {
-              if (ENG != TRUE) { Print(L"Обнаружена команда Exec, запуск приложения доб. в очередь\n\r"); }
+              gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_OP_EXEC), NULL));
+              UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_OP_EXEC), NULL));
+              LogToFile(LogFile, Log);
               Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
               Prev_OP->ID = EXEC;
               Add_OP_CODE(Start, Prev_OP);
@@ -664,33 +694,29 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "Skip"))
             {
-              if (ENG != TRUE) { Print(L"Обнаружена команда Skip.\n\r"); }
+              gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_OP_SKIP), NULL));
+              UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_OP_SKIP), NULL));
+              LogToFile(LogFile, Log);
 
-              //Debug
-              //Print(L" Prev_OP: %d ", Prev_OP->ID);
+              DEBUG_CODE(
+                //Debug
+                Print(L" Prev_OP: %d ", Prev_OP->ID);
+              );
 
               /*
               * Add Op Code "Skip" if
-              * 7 >= ID <= 13 
+              * 6 >= ID <= 10
               */
-              if (Prev_OP->ID >= 7 && Prev_OP->ID <= 13) {
-                if (ENG == TRUE) {
-                  Print(L"If the previous Op succeeds,\nskip will be performed\n\r");
-                }
-                else
-                {
-                  Print(L"В случае успеха предыдущей,\nбудет выполнен переход на указанное кол-во команд вперёд\n\r");
-                }
+              if (Prev_OP->ID >= 6 && Prev_OP->ID <= 10) {
+                gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_OP_SKIP_SUPPORTED), NULL));
+                UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_OP_SKIP_SUPPORTED), NULL));
+                LogToFile(LogFile, Log);
               }
               else
               {
-                if (ENG == TRUE) {
-                  Print(L"But previous one doesn't support \"Op Skip\", so nothing's going to happen\n\r");
-                }
-                else
-                {
-                  Print(L"Но предыдущая не поддерживает эту команду, поэтому пропуск не случится\n\r");
-                }
+                gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_OP_SKIP_UNSUPPORTED), NULL));
+                UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_OP_SKIP_UNSUPPORTED), NULL));
+                LogToFile(LogFile, Log);
                 curr_pos += AsciiStrLen(&ConfigData[curr_pos]);
                 continue;
               }
@@ -707,60 +733,37 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
               Add_OP_CODE(Start, Prev_OP);
               continue;
             }
-            if (AsciiStrStr(&ConfigData[curr_pos], "UpdateDB"))
-            {
-              /*
-              Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-              Prev_OP->ID = UPDATE_DB;
-              Add_OP_CODE(Start, Prev_OP);
-              */
-              if (ENG == TRUE) { Print(L"I commented out this Op, you can't use it\n\r"); }
-              else
-              { Print(L"Я закомментировал эту команду, сейчас она не сработает\n\r"); }
-              continue;
-            }
             if (AsciiStrStr(&ConfigData[curr_pos], "GetAptioDB"))
             {
               /*
               Prev_OP = AllocateZeroPool(sizeof(struct OP_DATA));
-              Prev_OP->ID = GET_DB;
+              Prev_OP->ID = GET_AptioDB;
               Add_OP_CODE(Start, Prev_OP);
               */
-              if (ENG == TRUE) { Print(L"I commented out this Op, you can't use it\n\r"); }
-              else
-              { Print(L"Я закомментировал эту команду, сейчас она не сработает\n\r"); }
+              gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_INACTIVE_OP), NULL));
+              UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_INACTIVE_OP), NULL));
+              LogToFile(LogFile, Log);
               continue;
             }
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Command %a Invalid\n\r", &ConfigData[curr_pos]);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Аргумент %a неверен\n\r");
-              UnicodeSPrint(Log, 512, u"Аргумент %a неверен\n\r", &ConfigData[curr_pos]);
-              LogToFile(LogFile, Log);
-            }
+
+            Print(L"%s%a\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_INVALID_OP), NULL), &ConfigData[curr_pos]);
+            UnicodeSPrint(Log, 0x200, u"%s%a\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_INVALID_OP), NULL), &ConfigData[curr_pos]);
+            LogToFile(LogFile, Log);
             return EFI_INVALID_PARAMETER;
         }
 
         if (
              (
                Prev_OP->ID == COMPATIBILITY || Prev_OP->ID == LOAD_FS || Prev_OP->ID == LOAD_FV || Prev_OP->ID == LOAD_GUID_PE || Prev_OP->ID == LOADED
-               || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE || Prev_OP->ID == UNINSTALL_PROTOCOL || Prev_OP->ID == SKIP || Prev_OP->ID == UPDATE_DB
+               || Prev_OP->ID == LOADED_GUID_PE || Prev_OP->ID == LOADED_GUID_TE || Prev_OP->ID == UNINSTALL_PROTOCOL || Prev_OP->ID == SKIP || Prev_OP->ID == GET_DB
              )
              && Prev_OP->Name == 0
            )
         {
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Found File %a\n\r", &ConfigData[curr_pos]);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              UnicodeSPrint(Log, 512, u"Обнаружен ввод названия\n\r");
-              LogToFile(LogFile, Log);
-            }
+            Print(L"%s%a\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_FOUND_NAME_INPUT), NULL), &ConfigData[curr_pos]);
+            UnicodeSPrint(Log, 0x200, u"%s%a\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_FOUND_NAME_INPUT), NULL), &ConfigData[curr_pos]);
+            LogToFile(LogFile, Log);
+
             UINTN FileNameLength = AsciiStrLen(&ConfigData[curr_pos]) + 1;
             CHAR8 *FileName = AllocateZeroPool(FileNameLength);
             CopyMem(FileName, &ConfigData[curr_pos], FileNameLength);
@@ -776,46 +779,27 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             Prev_OP->Name = FileName;
             Prev_OP->Name_Dyn_Alloc = TRUE;
 
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"FileGuid input: %a\n\r", &ConfigData[curr_pos]);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              UnicodeSPrint(Log, 512, u"Ввод FileGuid: %a\n\r", &ConfigData[curr_pos]);
-              LogToFile(LogFile, Log);
-            }
+            Print(L"%s%a\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_FOUND_GUID_INPUT), NULL), &ConfigData[curr_pos]);
+            UnicodeSPrint(Log, 0x200, u"%s%a\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_FOUND_GUID_INPUT), NULL), &ConfigData[curr_pos]);
+            LogToFile(LogFile, Log);
 
             //Skip line with FileGuid and skip again if the next one is not populated
             curr_pos += FileGuidLength + 1; //+1 is needed
             if (AsciiStrStr(&ConfigData[curr_pos], "Op") || AsciiStrStr(&ConfigData[curr_pos], "Pattern"))
             {
-              if (ENG == TRUE){
-                Print(L"Freeform Section Subtype GUID not specified, your input: %a,\nlooking for RAW instead\n", &ConfigData[curr_pos]);
-                UnicodeSPrint(Log, 512, u"Freeform Section Subtype GUID not specified, your input: %a,\nlooking for RAW instead\n", &ConfigData[curr_pos]);
-                LogToFile(LogFile, Log);
-              }
-              else
-              {
-                Print(L"Freeform Section Subtype GUID не указан, ввод: %a,\nвместо этого ищем секцию RAW\n", &ConfigData[curr_pos]);
-                UnicodeSPrint(Log, 512, u"Freeform Section Subtype GUID не указан, ввод: %a,\nвместо этого ищем секцию RAW\n", &ConfigData[curr_pos]);
-                LogToFile(LogFile, Log);
-              }
+              gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_RAW_GUID_INPUT), NULL));
+              UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_RAW_GUID_INPUT), NULL));
+              LogToFile(LogFile, Log);
+
               //Get back at the prev pos. so not to break the program sequence
               curr_pos -= FileGuidLength + 1;
               Prev_OP->Name2 = NULL;
               continue;
             }
 
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"SectionGuid input: %a\n\r", &ConfigData[curr_pos]);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              UnicodeSPrint(Log, 512, u"Ввод SectionGuid: %a\n\r", &ConfigData[curr_pos]);
-              LogToFile(LogFile, Log);
-            }
+            Print(L"%s%a\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SECTION_GUID_INPUT), NULL), &ConfigData[curr_pos]);
+            UnicodeSPrint(Log, 0x200, u"%s%a\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SECTION_GUID_INPUT), NULL), &ConfigData[curr_pos]);
+            LogToFile(LogFile, Log);
 
             UINTN SectionGuidLength = AsciiStrLen(&ConfigData[curr_pos]) + 1;
             FileName = AllocateZeroPool(SectionGuidLength);
@@ -828,90 +812,50 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
         {
             if (AsciiStrStr(&ConfigData[curr_pos], "Offset"))
             {
-                if (ENG == TRUE) {
-                  UnicodeSPrint(Log, 512, u"%a", "Found Offset\n\r");
-                  LogToFile(LogFile, Log);
-                }
-                else
-                {
-                  UnicodeSPrint(Log, 512, u"Смещение получено\n\r");
-                  LogToFile(LogFile, Log);
-                }
+                UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_ARG_OFFSET), NULL));
+                LogToFile(LogFile, Log);
                 Prev_OP->PatchType = OFFSET;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "Pattern"))
             {
-                if (ENG == TRUE) {
-                  UnicodeSPrint(Log, 512, u"%a", "Found Pattern\n\r");
-                  LogToFile(LogFile, Log);
-                }
-                else
-                {
-                  UnicodeSPrint(Log, 512, u"Найден шаблон\n\r");
-                  LogToFile(LogFile, Log);
-                }
+                UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_ARG_PATTERN), NULL));
+                LogToFile(LogFile, Log);
                 Prev_OP->PatchType = PATTERN;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "RelNegOffset"))
             {
-                if (ENG == TRUE) {
-                  UnicodeSPrint(Log, 512, u"%a", "Found Offset\n\r");
-                  LogToFile(LogFile, Log);
-                }
-                else
-                {
-                  UnicodeSPrint(Log, 512, u"Смещение получено\n\r");
-                  LogToFile(LogFile, Log);
-                }
+                UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_ARG_OFFSET), NULL));
+                LogToFile(LogFile, Log);
                 Prev_OP->PatchType = REL_NEG_OFFSET;
             }
             if (AsciiStrStr(&ConfigData[curr_pos], "RelPosOffset"))
             {
-                if (ENG == TRUE) {
-                  UnicodeSPrint(Log, 512, u"%a", "Found Offset\n\r");
-                  LogToFile(LogFile, Log);
-                }
-                else
-                {
-                  UnicodeSPrint(Log, 512, u"Смещение получено\n\r");
-                  LogToFile(LogFile, Log);
-                }
+                UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_ARG_OFFSET), NULL));
+                LogToFile(LogFile, Log);
                 Prev_OP->PatchType = REL_POS_OFFSET;
             }
             continue;
         }
 
-        //This is the new itereration, we are just in from the Pattern OPCODE
         //Check which arguments are present, save curr_pos data
+        //This is the new itereration, we are just in from the Pattern OPCODE, Prev_OP->ARG3 == 0
         //ARG3 is Offset, ARG6 is Pattern Length, ARG7 is Pattern Buffer, Regex is raw pattern string
         if ((Prev_OP->ID == PATCH_FAST || Prev_OP->ID == PATCH) && Prev_OP->PatchType != 0 && Prev_OP->ARG3 == 0)
         {
             if (Prev_OP->PatchType == OFFSET || Prev_OP->PatchType == REL_NEG_OFFSET || Prev_OP->PatchType == REL_POS_OFFSET) //Patch by offset
             {
-                if (ENG == TRUE) {
-                  UnicodeSPrint(Log, 512, u"%a", "Decode Offset\n\r");
-                  LogToFile(LogFile, Log);
-                }
-                else
-                {
-                  UnicodeSPrint(Log, 512, u"Смещение посчитано\n\r");
-                  LogToFile(LogFile, Log);
-                }
+                gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_ARG_OFFSET_DECODED), NULL));
+                UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_ARG_OFFSET_DECODED), NULL));
+                LogToFile(LogFile, Log);
                 Prev_OP->ARG3 = AsciiStrHexToUint64(&ConfigData[curr_pos]);
             }
             if (Prev_OP->PatchType == PATTERN) //Take offset from Prev_OP if it was PATTERN patch
             {
                 Prev_OP->ARG3 = 0xFFFFFFFF;
                 Prev_OP->ARG6 = AsciiStrLen(&ConfigData[curr_pos]) / 2;
-                if (ENG == TRUE) {
-                  UnicodeSPrint(Log, 512, u"Found %d Bytes\n\r", Prev_OP->ARG6);
-                  LogToFile(LogFile, Log);
-                }
-                else
-                {
-                  UnicodeSPrint(Log, 512, u"Найдено %d байт\n\r", Prev_OP->ARG6);
-                  LogToFile(LogFile, Log);
-                }
+                Print(L"\n%s%x\n\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_PATTERN_SIZE), NULL), Prev_OP->ARG6);
+                UnicodeSPrint(Log, 0x200, u"%s%x\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_PATTERN_SIZE), NULL), Prev_OP->ARG6);
+                LogToFile(LogFile, Log);
                 
                 UINTN RegexLength = AsciiStrLen(&ConfigData[curr_pos]) + 1;
                 CHAR8 *RegexChar = AllocateZeroPool(RegexLength);
@@ -927,54 +871,43 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             continue;
         }
 
-        //Check which arguments are present, save curr_pos data
+        //Prev_OP->ARG3 != 0
         //ARG4 is Patch Length, ARG5 is Patch Buffer
         if ((Prev_OP->ID == PATCH_FAST || Prev_OP->ID == PATCH) && Prev_OP->PatchType != 0 && Prev_OP->ARG3 != 0)
         {
 
             Prev_OP->ARG4 = AsciiStrLen(&ConfigData[curr_pos]) / 2;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Found %d Bytes\n\r", Prev_OP->ARG4);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              UnicodeSPrint(Log, 512, u"Найдено %d байт\n\r", Prev_OP->ARG4);
-              LogToFile(LogFile, Log);
-            }
+            Print(L"\n%s%x\n\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_PATCH_SIZE), NULL), Prev_OP->ARG4);
+            UnicodeSPrint(Log, 0x200, u"%s%x\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_PATCH_SIZE), NULL), Prev_OP->ARG4);
+            LogToFile(LogFile, Log);
+
             Prev_OP->ARG5_Dyn_Alloc = TRUE;
             Prev_OP->ARG5 = (UINT64)AllocateZeroPool(Prev_OP->ARG4);
             AsciiStrHexToBytes(&ConfigData[curr_pos], Prev_OP->ARG4 * 2, (UINT8 *)Prev_OP->ARG5, Prev_OP->ARG4);
             
             AsciiStrToUnicodeStrS(&ConfigData[curr_pos], Pattern16, Prev_OP->ARG4 * 2);
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Patch was set for execution\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              UnicodeSPrint(Log, 512, u"Патч добавлен в очередь\n\r");
-              LogToFile(LogFile, Log);
-            }
+            gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_PATCH_PENDING), NULL));
+            UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_PATCH_PENDING), NULL));
+            LogToFile(LogFile, Log);
+
             PrintDump(Prev_OP->ARG4, (UINT8 *)Prev_OP->ARG5);
-            UnicodeSPrint(Log, 512, u"\n\r");
+            UnicodeSPrint(Log, 0x200, u"\n\r");
             LogToFile(LogFile, Log);
             continue;
         }
     }
     FreePool(ConfigData);
 
-    // A leftover from Smokeless
-    /*
-    PrintOPChain(Start);
-    dispatch
-    */
 
-    /*Start of the actual execution*/
+    /*-----------------------------------------------------------------------------------*/
+    //
+    //Start of the actual execution
+    //
+
     struct OP_DATA *next;
 
     //Op Patch vars
-    INT64 BaseOffset; //REL_POS and REL_NEG args rely on this
+    INT64 BaseOffset = 0; //REL_POS and REL_NEG args rely on this
     UINT64 *Captures = { 0 }; //Represents found offsets, each offset can be up to 8 bytes
     UINTN j = 0; //Stores Captures index
 
@@ -996,454 +929,234 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
     for (next = Start; next != NULL; next = next->next)
     {
         switch (next->ID){
-        case NO_OP:
-            UnicodeSPrint(Log,512,u"NOP\n\r");
-            break;
-        case COMPATIBILITY:
-            isOpSkipAllowed = FALSE;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing Compatibility\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Выполняется аргумент Compatibility\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент Compatibility\n\r");
-              LogToFile(LogFile, Log);
-            }
-            if (AsciiStrCmp(next->Name, "DB9A1E3D-45CB-4ABB-853B-E5387FDB2E2D") && AsciiStrCmp(next->Name, "389F751F-1838-4388-8390-CD8154BD27F8"))
-            {
-              if (ENG == TRUE) { Print(L"Recommended protocols are:\nEFI_FIRMWARE_VOLUME_PROTOCOL_GUID(good for HP Insyde Rev.3)\n389F751F-1838-4388-8390-CD8154BD27F8\n\nEFI_LEGACY_BIOS_PROTOCOL_GUID(good for Aptio 4, Insyde Rev.3)\nDB9A1E3D-45CB-4ABB-853B-E5387FDB2E2D\n\n\r"); }
-              else { Print(L"Рекомендуемые протоколы:\nEFI_FIRMWARE_VOLUME_PROTOCOL_GUID(good for HP Insyde Rev.3)\n389F751F-1838-4388-8390-CD8154BD27F8\n\nEFI_LEGACY_BIOS_PROTOCOL_GUID(good for Aptio 4, Insyde Rev.3)\nDB9A1E3D-45CB-4ABB-853B-E5387FDB2E2D\n\n\r"); }
-            }
-            Status = AsciiStrToGuid(next->Name, &FilterProtocol); //Now search for everything with this protocol
-            if (EFI_ERROR(Status))
-            {
-              if (ENG == TRUE) { Print(L"Failed to convert \"%a\" to GUID\n", next->Name); }
-              else { Print(L"Не удалось сконвертировать \"%a\" в GUID\n", next->Name); }
-              break;
-            }
-            if (ENG == TRUE) {
-              Print(L"Now filtering Handles by protocol: %g\n\r", FilterProtocol);
-              UnicodeSPrint(Log, 512, u"Now filtering Handles by protocol: %g\n\r", FilterProtocol);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Фильтрация по протоколу: %g\n\r", FilterProtocol);
-              UnicodeSPrint(Log, 512, u"Фильтрация по протоколу: %g\n\r", FilterProtocol);
-              LogToFile(LogFile, Log);
-            }
-            Status = EFI_NOT_FOUND; //This isn't an Op which loads Image, so it mustn't return Status from AsciiStrToGuid
+        case NOP:
             break;
         case LOADED:
             isOpSkipAllowed = FALSE;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing Loaded\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Выполняется аргумент Loaded\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент Loaded\n\r");
-              LogToFile(LogFile, Log);
-            }
+
+            PrintCase(L"Loaded");
+
             Status = FindLoadedImageFromName(ImageHandle, next->Name, &ImageInfo, FilterProtocol);
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Loaded Image %r -> %x\n\r", Status, ImageInfo->ImageBase);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Результат попытки поиска: %r\n\r", Status);
-              UnicodeSPrint(Log, 512, u"Результат попытки поиска: %r\n\r", Status);
-              LogToFile(LogFile, Log);
-            }
+
+            PrintSearchResult(Status);
+
             break;
         case LOADED_GUID_PE:
             isOpSkipAllowed = FALSE;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing NonamePE\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Выполняется аргумент NonamePE\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент NonamePE\n\r");
-              LogToFile(LogFile, Log);
-            }
+
+            PrintCase(L"NonamePE");
+
             Status = FindLoadedImageFromGUID(ImageHandle, next->Name, &ImageInfo, EFI_SECTION_PE32, FilterProtocol);
-            if (ENG == TRUE) {
-              Print(L"Search result: %r\n\r", Status);
-              UnicodeSPrint(Log, 512, u"Search result: %r\n\r", Status);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Результат попытки поиска: %r\n\r", Status);
-              UnicodeSPrint(Log, 512, u"Результат попытки поиска: %r\n\r", Status);
-              LogToFile(LogFile, Log);
-            }
+
+            PrintSearchResult(Status);
+
             break;
         case LOADED_GUID_TE:
             isOpSkipAllowed = FALSE;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing NonameTE\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Выполняется аргумент NonameTE\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент NonameTE\n\r");
-              LogToFile(LogFile, Log);
-            }
+
+            PrintCase(L"NonameTE");
+
             Status = FindLoadedImageFromGUID(ImageHandle, next->Name, &ImageInfo, EFI_SECTION_TE, FilterProtocol);
-            if (ENG == TRUE) {
-              Print(L"Search result: %r\n\r", Status);
-              UnicodeSPrint(Log, 512, u"Search result: %r\n\r", Status);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Результат попытки поиска: %r\n\r", Status);
-              UnicodeSPrint(Log, 512, u"Результат попытки поиска: %r\n\r", Status);
-              LogToFile(LogFile, Log);
-            }
+
+            PrintSearchResult(Status);
+
             break;
         case LOAD_FS:
             isOpSkipAllowed = FALSE;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing LoadFromFS\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Выполняется аргумент LoadFromFS\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент LoadFromFS\n\r");
-              LogToFile(LogFile, Log);
-            }
+
+            PrintCase(L"LoadFromFS");
+
             Status = LoadFromFS(ImageHandle, next->Name, &ImageInfo, &AppImageHandle);
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Loaded Image %r -> %x\n\r", Status, ImageInfo->ImageBase);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Ответ драйвера: %r, смещение загрузки: 0x%x\n\r", Status, ImageInfo->ImageBase);
-              UnicodeSPrint(Log, 512, u"Ответ драйвера: %r, смещение загрузки: 0x%x\n\r", Status, ImageInfo->ImageBase);
-              LogToFile(LogFile, Log);
-            }
+
+            PrintSearchResult(Status);
+
             // UnicodeSPrint(Log,512,u"\t FileName %a\n\r", next->ARG2); // A leftover from Smokeless
             break;
         case LOAD_FV:
             isOpSkipAllowed = FALSE;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing LoadFromFV\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Выполняется аргумент LoadFromFV\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент LoadFromFV\n\r");
-              LogToFile(LogFile, Log);
-            }
+
+            PrintCase(L"LoadFromFV");
+
             Status = LoadFromFV(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32, FilterProtocol);
-            if (Status != EFI_SUCCESS) {
-              if (ENG == TRUE) {
-                Print(L"Search result: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Search result: %r\n\r", Status);
-                LogToFile(LogFile, Log);
-              }
-              else
-              {
-                Print(L"Результат поиска: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Результат поиска: %r\n\r", Status);
-                LogToFile(LogFile, Log);
-              }
-              break;
-            };
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Loaded Image %r -> %x\n\r", Status, ImageInfo->ImageBase);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Смещение загрузки: 0x%x\n\r", ImageInfo->ImageBase);
-              UnicodeSPrint(Log, 512, u"Смещение загрузки: 0x%x\n\r", ImageInfo->ImageBase);
-              LogToFile(LogFile, Log);
-            }
+
+            PrintSearchResult(Status);
+
             break;
         case LOAD_GUID_PE:
             isOpSkipAllowed = FALSE;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing LoadGUIDandSavePE\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Выполняется аргумент LoadGUIDandSavePE\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент LoadGUIDandSavePE\n\r");
-              LogToFile(LogFile, Log);
-            }
+            
+            PrintCase(L"LoadGUIDandSavePE");
+
             Status = LoadGUIDandSavePE(ImageHandle, next->Name, &ImageInfo, &AppImageHandle, EFI_SECTION_PE32, SystemTable, FilterProtocol);
-            if (Status != EFI_SUCCESS) {
-              if (ENG == TRUE) {
-                Print(L"Section search result: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Section search result: %r\n\r", Status);
-                LogToFile(LogFile, Log);
-              }
-              else
-              {
-                Print(L"Результат поиска секции: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Результат поиска секции: %r\n\r", Status);
-                LogToFile(LogFile, Log);
-              }
+
+            if (EFI_ERROR(Status)) {
+              PrintSearchResult(Status);
               break;
             };
-            if (ENG == TRUE) {
-              Print(L"Section Base and Size: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
-              UnicodeSPrint(Log, 512, u"Section Base and Size: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Смещение и размер секции: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
-              UnicodeSPrint(Log, 512, u"Смещение и размер секции: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
-              LogToFile(LogFile, Log);
-            }
+
+            Print(L"%s0x%x / 0x%x\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SECTION_BASENSIZE), NULL), (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
+            UnicodeSPrint(Log, 0x200, u"%s0x%x / 0x%x\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SECTION_BASENSIZE), NULL), (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
+            LogToFile(LogFile, Log);
+
             isOpSkipAllowed = TRUE;
             break;
         case LOAD_GUID_RAWnFREEFORM:
             isOpSkipAllowed = FALSE;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing LoadGUIDandSaveFreeform\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Выполняется аргумент LoadGUIDandSaveFreeform\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент LoadGUIDandSaveFreeform\n\r");
-              LogToFile(LogFile, Log);
-            }
+
+            PrintCase(L"LoadGUIDandSaveFreeform");
+
             Status = LoadGUIDandSaveFreeform(ImageHandle, &ImageInfo->ImageBase, &ImageInfo->ImageSize, next->Name, next->Name2, SystemTable, FilterProtocol);
-            if (Status != EFI_SUCCESS) {
-              if (ENG == TRUE) {
-                Print(L"Section search result: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Section search result: %r\n\r", Status);
-                LogToFile(LogFile, Log);
-              }
-              else
-              {
-                Print(L"Результат поиска секции: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Результат поиска секции: %r\n\r", Status);
-                LogToFile(LogFile, Log);
-              }
+
+            if (EFI_ERROR(Status)) {
+              PrintSearchResult(Status);
               break;
             };
-            if (ENG == TRUE) {
-              Print(L"Section Base and Size: 0x%x / 0x%x\n\r", (UINT8*)ImageInfo->ImageBase, (UINT8*)ImageInfo->ImageSize);
-              UnicodeSPrint(Log, 512, u"Section Base and Size: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Смещение и размер секции: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
-              UnicodeSPrint(Log, 512, u"Смещение и размер секции: 0x%x / 0x%x\n\r", (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
-              LogToFile(LogFile, Log);
-            }
+
+            Print(L"%s0x%x / 0x%x\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SECTION_BASENSIZE), NULL), (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
+            UnicodeSPrint(Log, 0x200, u"%s0x%x / 0x%x\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SECTION_BASENSIZE), NULL), (UINT8 *)ImageInfo->ImageBase, (UINT8 *)ImageInfo->ImageSize);
+            LogToFile(LogFile, Log);
+
             isOpSkipAllowed = TRUE;
             break;
         case PATCH_FAST:
-          isOpSkipAllowed = FALSE;
+            isOpSkipAllowed = FALSE;
 
-          /*
-          * Reset to patch by ImageInfo if
-          * Op has changed from GET_DB with success
-          */
-          if(Status == EFI_SUCCESS){
-            isDBThere = FALSE;
-            DBPointer = 0;
-          }
+            PrintCase(L"FastPatch");
 
-          /*
-          * Reset ImageInfo if
-          * Prev Op has not found an Image
-          * Prev Op is not GET_DB
-          */
-          if (Status != EFI_SUCCESS && isDBThere == FALSE){ FreePool(ImageInfo); goto PatchFail; }
+            /*
+            * Reset to patch by ImageInfo if
+            * Op has changed from GetAptioDB with success
+            */
+            if(Status == EFI_SUCCESS){
+              isDBThere = FALSE;
+              DBPointer = 0;
+            }
 
-          if (!isDBThere) {
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Executing Fast Patch\n\rPatching Image Size: 0x%x\n\r", ImageInfo->ImageSize);
+            /*
+            * Reset ImageInfo if
+            * Prev Op has not found an Image
+            * Prev Op is not GetAptioDB
+            */
+            if (EFI_ERROR(Status) && isDBThere == FALSE){ FreePool(ImageInfo); goto PatchFail; }
+
+            //Reach here if image found (Status = SUCCESS)
+            if (!isDBThere) {
+              Print(L"%s%x\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_BIN_SIZE), NULL), ImageInfo->ImageSize);
+              UnicodeSPrint(Log, 0x200, u"%s%x\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_BIN_SIZE), NULL), ImageInfo->ImageSize);
               LogToFile(LogFile, Log);
             }
-            else
-            {
-              Print(L"Выполняется аргумент Fast Patch\n\rРазмер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент Fast Patch\n\rРазмер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
-              LogToFile(LogFile, Log);
-            }
-          }
 
-            if (next->PatchType == PATTERN)
-            {
-                if (ENG == TRUE) {
-                  UnicodeSPrint(Log, 512, u"%a", "Finding Pattern\n\r");
-                  LogToFile(LogFile, Log);
-                }
-                else
-                {
-                  Print(L"Поиск шаблона\n\r");
-                  UnicodeSPrint(Log, 512, u"Поиск шаблона\n\r");
-                  LogToFile(LogFile, Log);
-                }
-                if (isDBThere) {
-                  for (UINTN i = 0; i < DBSize - next->ARG6; i += 1)
-                  {
-                    next->ARG3 = DBPointer + i;
-                    //Since DBPointer is not (UINT8 *), have to use ARG3 as DestinBuf, which slows the cycle
-                    if (CompareMem((UINT8 *)next->ARG3, (UINT8 *)next->ARG7, next->ARG6) == 0)
+              if (next->PatchType == PATTERN)
+              {
+                  gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_PATTERN_SEARCH), NULL));
+
+                  if (isDBThere) {
+                    for (UINTN i = 0; i < DBSize - next->ARG6; i += 1)
                     {
-                      break;
+                      next->ARG3 = DBPointer + i;
+                      //Since DBPointer is not (UINT8 *), have to use ARG3 as DestinBuf, which slows the cycle
+                      if (CompareMem((UINT8 *)next->ARG3, (UINT8 *)next->ARG7, next->ARG6) == 0)
+                      {
+                        break;
+                      }
                     }
-                  }
-                  /*Debug
-                  Print(L"Base: %x\n\r", DBPointer);
-                  Print(L"ARG3: %x\n\r", (UINT8 *)next->ARG3);
-                  */
-                }
-                else
-                {
-                  for (UINTN i = 0; i < ImageInfo->ImageSize - next->ARG6; i += 1)
-                  {
-                    //Old imp, no regex
-                    if (CompareMem(((UINT8 *)ImageInfo->ImageBase) + i, (UINT8 *)next->ARG7, next->ARG6) == 0)
-                    {
-                      next->ARG3 = i;
-                      break;
-                    }
-                  }
-                }
-                if (next->ARG3 == 0xFFFFFFFF) //Stopped near overflow
-                {
-                  if (ENG == TRUE) {
-                    UnicodeSPrint(Log, 512, u"%a", "No Pattern Found\n\r");
-                    LogToFile(LogFile, Log);
+
+                    DEBUG_CODE(
+                      //Debug
+                      Print(L"Base: %x\n\r", DBPointer);
+                      Print(L"ARG3: %x\n\r", (UINT8 *)next->ARG3);
+                    );
                   }
                   else
                   {
-                    Print(L"Шаблон не найден\n\r");
-                    UnicodeSPrint(Log, 512, u"Шаблон не найден\n\r");
-                    LogToFile(LogFile, Log);
+                    for (UINTN i = 0; i < ImageInfo->ImageSize - next->ARG6; i += 1)
+                    {
+                      //Old imp, no regex
+                      if (CompareMem(((UINT8 *)ImageInfo->ImageBase) + i, (UINT8 *)next->ARG7, next->ARG6) == 0)
+                      {
+                        next->ARG3 = i;
+                        break;
+                      }
+                    }
                   }
-                  next->ARG3 = 0;
-                  break;
+                  if (next->ARG3 == 0xFFFFFFFF) //Stopped near overflow
+                  {
+                    gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_PATTERN_NOT_FOUND), NULL));
+                    UnicodeSPrint(Log, 0x200, u"%s\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_PATTERN_NOT_FOUND), NULL));
+                    LogToFile(LogFile, Log);
+
+                    next->ARG3 = 0;
+                    break;
+                  }
+              }
+              if (next->PatchType == REL_POS_OFFSET && next->ARG3 != 0)
+              {
+                next->ARG3 = BaseOffset + next->ARG3;
+                gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_REL_POS_OFFSET), NULL));
+              }
+              if (next->PatchType == REL_NEG_OFFSET && next->ARG3 != 0)
+              {
+                next->ARG3 = BaseOffset - next->ARG3;
+                gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_REL_NEG_OFFSET), NULL));
+              }
+              BaseOffset = next->ARG3;
+
+              Print(L"%s%X\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_MATCH_OFFSET), NULL), next->ARG3);
+              UnicodeSPrint(Log, 0x200, u"%s%X\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_MATCH_OFFSET), NULL), next->ARG3);
+              LogToFile(LogFile, Log);
+
+              if (next->ARG3 != 0) {
+                isOpSkipAllowed = TRUE;
+
+                gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_PATCHED), NULL));
+                UnicodeSPrint(Log, 0x200, u"%s", HiiGetString(HiiHandle, STRING_TOKEN(STR_PATCHED), NULL));
+                LogToFile(LogFile, Log);
+
+                if (!isDBThere) {
+                  CopyMem((UINT8 *)ImageInfo->ImageBase + next->ARG3, (UINT8 *)next->ARG5, next->ARG4);
                 }
-            }
-            if (next->PatchType == REL_POS_OFFSET && next->ARG3 != 0)
-            {
-              next->ARG3 = BaseOffset + next->ARG3;
-              if (ENG != TRUE) {
-                Print(L"Поиск смещения вперёд\n\r");
-                UnicodeSPrint(Log, 512, u"Поиск смещения вперёд\n\r");
-                LogToFile(LogFile, Log);
-              }
-            }
-            if (next->PatchType == REL_NEG_OFFSET && next->ARG3 != 0)
-            {
-              next->ARG3 = BaseOffset - next->ARG3;
-              if (ENG != TRUE) {
-                Print(L"Поиск смещения назад\n\r");
-                UnicodeSPrint(Log, 512, u"Поиск смещения назад\n\r");
-                LogToFile(LogFile, Log);
-              }
-            }
-            BaseOffset = next->ARG3;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Offset in section: 0x%x\n\r", next->ARG3);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Смещение в секции: 0x%x\n\r", next->ARG3);
-              UnicodeSPrint(Log, 512, u"Смещение в секции: 0x%x\n\r", next->ARG3);
-              LogToFile(LogFile, Log);
-            }
-            
-            if (next->ARG3 != 0) {
-              isOpSkipAllowed = TRUE;
-              if (ENG == TRUE) {
-                Print(L"Patched\n\r");
-                UnicodeSPrint(Log, 512, u"%a", "\nPatched\n\r");
-                LogToFile(LogFile, Log);
+                else
+                {
+                  CopyMem((UINT8 *)next->ARG3, (UINT8 *)next->ARG5, next->ARG4);
+                }
+                Status = EFI_SUCCESS;
               }
               else
               {
-                Print(L"Патч выполнен\n\r");
-                UnicodeSPrint(Log, 512, u"\nПатч выполнен\n\r");
+                gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_NOT_PATCHED), NULL));
+                UnicodeSPrint(Log, 0x200, u"%s", HiiGetString(HiiHandle, STRING_TOKEN(STR_NOT_PATCHED), NULL));
                 LogToFile(LogFile, Log);
               }
 
-              if (!isDBThere) {
-                CopyMem((UINT8 *)ImageInfo->ImageBase + next->ARG3, (UINT8 *)next->ARG5, next->ARG4);
-              }
-              else
-              {
-                CopyMem((UINT8 *)next->ARG3, (UINT8 *)next->ARG5, next->ARG4);
-              }
-            }
-            else
-            {
-              if (ENG == TRUE) {
-                Print(L"Not patched\n\r");
-                UnicodeSPrint(Log, 512, u"%a", "\nNot patched\n\r");
-                LogToFile(LogFile, Log);
-              }
-              else
-              {
-                Print(L"Патч провалился\n\r");
-                UnicodeSPrint(Log, 512, u"\nПатч провалился\n\r");
-                LogToFile(LogFile, Log);
-              }
-            }
-
-            Status = EFI_SUCCESS;
-            PatchFail:
-            break;
+              PatchFail:
+              next->ARG3 = 0;
+              break;
         case PATCH:
             isOpSkipAllowed = FALSE;
             /*
             * Reset ImageInfo if
             * Prev Op has not found an Image
             */
-            if (Status != EFI_SUCCESS) { FreePool(ImageInfo); goto PatchFail; }
+            if (EFI_ERROR(Status)) { FreePool(ImageInfo); goto PatchFail; }
 
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Executing Patch\n\rPatching Image Size: %x\n\r", ImageInfo->ImageSize);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Выполняется аргумент Patch\n\rРазмер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент Patch\n\rРазмер целевого, последнего загруженного драйвера в HEX: 0x%x\n\r", ImageInfo->ImageSize);
-              LogToFile(LogFile, Log);
-            }
+            PrintCase(L"Patch");
+            Print(L"%s%x\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_BIN_SIZE), NULL), ImageInfo->ImageSize);
+            UnicodeSPrint(Log, 0x200, u"%s%x\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_BIN_SIZE), NULL), ImageInfo->ImageSize);
+            LogToFile(LogFile, Log);
 
             if (next->PatchType == PATTERN)
             {
-                if (ENG == TRUE) {
-                  UnicodeSPrint(Log, 512, u"%a", "Finding Pattern\n\r");
-                  LogToFile(LogFile, Log);
-                }
-                else
-                {
-                  Print(L"Поиск шаблона\n\r");
-                  UnicodeSPrint(Log, 512, u"Поиск шаблона\n\r");
-                  LogToFile(LogFile, Log);
-                }
+              if ((UINT64)next->ARG6 > 0x199) {
+                Print(L"%s%X%s\n\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_PATTERN_TOO_BIG), NULL), (UINT64)next->ARG6, L"HALT!");
+                UnicodeSPrint(Log, 0x200, u"%s%X%s\n\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_PATTERN_TOO_BIG), NULL), (UINT64)next->ARG6, L"HALT!");
+                LogToFile(LogFile, Log);
+                return EFI_UNSUPPORTED;
+              };
+                
+                gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_PATTERN_SEARCH), NULL));
 
                 Print(L"\n%a\n\n\r", (CHAR8 *)next->RegexChar); //PrintDump ascii to screen
-                UnicodeSPrint(Log, 512, u"%a%a%a", "\n\t", (CHAR8 *)next->RegexChar, "\n\t"); //PrintDump unicode to log
+                UnicodeSPrint(Log, 0x200, u"%a%a%a", "\n\t", (CHAR8 *)next->RegexChar, "\n\t"); //PrintDump unicode to log
                 LogToFile(LogFile, Log);
 
                 BOOLEAN CResult = FALSE, CResult2 = FALSE; //Comparison Result
@@ -1465,21 +1178,11 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
                   */
                   if (CResult != FALSE && Status == EFI_SUCCESS)
                   {
-                    if (ENG == TRUE) {
-                      Print(L"Found\n\rPlease, standby...\n\r");
-                      UnicodeSPrint(Log, 512, u"^ Search string ^\n\r");
-                      LogToFile(LogFile, Log);
-                      UnicodeSPrint(Log, 512, u"\rFound patterns:\n\r");
-                      LogToFile(LogFile, Log);
-                    }
-                    else
-                    {
-                      Print(L"Найдено\n\rЖдите...\n\r");
-                      UnicodeSPrint(Log, 512, u"^ Поиск строки ^\n\r");
-                      LogToFile(LogFile, Log);
-                      UnicodeSPrint(Log, 512, u"\rНайденные места:\n\r");
-                      LogToFile(LogFile, Log);
-                    }
+                    gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_STANDBY), NULL));
+
+                    UnicodeSPrint(Log, 0x200, u"%s", HiiGetString(HiiHandle, STRING_TOKEN(STR_FOUND_INSTANCES), NULL));
+                    LogToFile(LogFile, Log);
+
                     isOpSkipAllowed = TRUE;
                     next->ARG3 = i;
                   }
@@ -1497,13 +1200,9 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
                   if ((UINTN)next->ARG3 != i && CResult != FALSE) {
                     RegexMatch(((UINT8 *)ImageInfo->ImageBase) + i, (CHAR8 *)next->RegexChar, (UINT8)next->ARG6, RegularExpressionProtocol, &CResult2);
                     if (CResult2 != FALSE) {
-                      if (ENG == TRUE) {
-                        Print(L"Found another match\n\r");
-                      }
-                      else
-                      {
-                        Print(L"Найдено ещё одно совпадение\n\r");
-                      }
+
+                      gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_ANOTHER_MATCH), NULL));
+
                       //Fill Captures[j]
                       Captures[j] = i;
                       j += 1;
@@ -1514,17 +1213,10 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
                 }
                 if (next->ARG3 == 0xFFFFFFFF) //Stopped near overflow
                 {
-                    if (ENG == TRUE) {
-                      Print(L"Pattern not found\n\r");
-                      UnicodeSPrint(Log, 512, u"%a", "Pattern not found\n\r");
-                      LogToFile(LogFile, Log);
-                    }
-                    else
-                    {
-                      Print(L"Шаблон не найден\n\r");
-                      UnicodeSPrint(Log, 512, u"Шаблон не найден\n\r");
-                      LogToFile(LogFile, Log);
-                    }
+                    gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_PATTERN_NOT_FOUND), NULL));
+                    UnicodeSPrint(Log, 0x200, u"%s\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_PATTERN_NOT_FOUND), NULL));
+                    LogToFile(LogFile, Log);
+
                     next->ARG3 = 0;
                 break;
                 }
@@ -1532,266 +1224,165 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             if (next->PatchType == REL_POS_OFFSET && next->ARG3 != 0)
             {
                 next->ARG3 = BaseOffset + next->ARG3;
-                if (ENG != TRUE) {
-                  Print(L"Поиск смещения вперёд\n\r");
-                  UnicodeSPrint(Log, 512, u"Поиск смещения вперёд\n\r");
-                  LogToFile(LogFile, Log);
-                }
+                gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_REL_POS_OFFSET), NULL));
             }
             if (next->PatchType == REL_NEG_OFFSET && next->ARG3 != 0)
             {
                 next->ARG3 = BaseOffset - next->ARG3;
-                if (ENG != TRUE) {
-                  Print(L"Поиск смещения назад\n\r");
-                  UnicodeSPrint(Log, 512, u"Поиск смещения назад\n\r");
-                  LogToFile(LogFile, Log);
-                }
+                gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_REL_NEG_OFFSET), NULL));
             }
             BaseOffset = next->ARG3;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"Offset in section: 0x%x\n\r", next->ARG3);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Смещение в секции: 0x%x\n\r", next->ARG3);
-              UnicodeSPrint(Log, 512, u"Смещение в секции: 0x%x\n\r", next->ARG3);
-              LogToFile(LogFile, Log);
-            }
+
+            Print(L"%s%X\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_MATCH_OFFSET), NULL), next->ARG3);
+            UnicodeSPrint(Log, 0x200, u"%s%X\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_MATCH_OFFSET), NULL), next->ARG3);
+            LogToFile(LogFile, Log);
             // PrintDump(next->ARG4+10,ImageInfo->ImageBase + next->ARG3 -5 ); //A leftover from Smokeless
 
             if (next->ARG3 != 0) {
               isOpSkipAllowed = TRUE;
-              if (ENG == TRUE) {
-                Print(L"Patched\n\r");
-                UnicodeSPrint(Log, 512, u"%a", "\nPatched\n\r");
-                LogToFile(LogFile, Log);
-              }
-              else
-              {
-                Print(L"Патч выполнен\n\r");
-                UnicodeSPrint(Log, 512, u"\nПатч выполнен\n\r");
-                LogToFile(LogFile, Log);
-              }
+
+              gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_PATCHED), NULL));
+              UnicodeSPrint(Log, 0x200, u"%s", HiiGetString(HiiHandle, STRING_TOKEN(STR_PATCHED), NULL));
+              LogToFile(LogFile, Log);
+
               // Patch first found instance only
               CopyMem((UINT8*)ImageInfo->ImageBase + next->ARG3, (UINT8*)next->ARG5, next->ARG4);
             }
             else
             {
-              if (ENG == TRUE) {
-                Print(L"Not patched\n\n\r");
-                UnicodeSPrint(Log, 512, u"%a", "\nNot patched\n\n\r");
+                gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_NOT_PATCHED), NULL));
+                UnicodeSPrint(Log, 0x200, u"%s", HiiGetString(HiiHandle, STRING_TOKEN(STR_NOT_PATCHED), NULL));
                 LogToFile(LogFile, Log);
-              }
-              else
-              {
-                Print(L"Патч провалился\n\n\r");
-                UnicodeSPrint(Log, 512, u"\nПатч провалился\n\n\r");
-                LogToFile(LogFile, Log);
-              }
             }
 
             // Patch every instance from Captures (it includes all except the first one)
             if (j != 0) {
-              if (ENG == TRUE) {
-                Print(L"Additional matches for pattern: %d\n\r", j);
-              }
-              else
-              {
-                Print(L"Доп. совпадений с шаблоном: %d\n\r", j);
-              }
+
+              Print(L"%s%d\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_TOTAL_MATCHES), NULL), j);
+              UnicodeSPrint(Log, 0x200, u"%s%d\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_TOTAL_MATCHES), NULL), j);
+              LogToFile(LogFile, Log);
+
               for (UINTN i = 0; i < j; i += 1) {
-                if (ENG == TRUE) {
-                  Print(L"%d offset in RAM: 0x%x\n\r", i + 1, (UINT8 *)ImageInfo->ImageBase + Captures[i]);
-                  UnicodeSPrint(Log, 512, u"%d offset in RAM: 0x%x\n\r", i + 1, (UINT8 *)ImageInfo->ImageBase + Captures[i]);
-                  LogToFile(LogFile, Log);
-                }
-                else
-                {
-                  Print(L"%d смещение в RAM: 0x%x\n\r", i + 1, (UINT8 *)ImageInfo->ImageBase + Captures[i]);
-                  UnicodeSPrint(Log, 512, u"%d смещение в RAM: 0x%x\n\r", i + 1, (UINT8 *)ImageInfo->ImageBase + Captures[i]);
-                  LogToFile(LogFile, Log);
-                }
+                Print(L"%d%s%x\n\r", i + 1, HiiGetString(HiiHandle, STRING_TOKEN(STR_NEXT_OFFSET), NULL), (UINT8 *)ImageInfo->ImageBase + Captures[i]);
+                UnicodeSPrint(Log, 0x200, u"%d%s%x\n\r", i + 1, HiiGetString(HiiHandle, STRING_TOKEN(STR_NEXT_OFFSET), NULL), (UINT8 *)ImageInfo->ImageBase + Captures[i]);
+                LogToFile(LogFile, Log);
+
                 CopyMem((UINT8 *)ImageInfo->ImageBase + Captures[i], (UINT8 *)next->ARG5, next->ARG4);
               }
             }
 
             SetMem(Captures, j, 0);
             j = 0;
+            next->ARG3 = 0;
             Status = EFI_SUCCESS;
             // PrintDump(next->ARG4+10,ImageInfo->ImageBase + next->ARG3 -5 ); //A leftover from Smokeless
             break;
         case EXEC:
             isOpSkipAllowed = FALSE;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "EXEC\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Запуск приложения через 3 секунды\n\r");
-              UnicodeSPrint(Log, 512, u"Запуск приложения(аргумент EXEC)\n\r");
-              LogToFile(LogFile, Log);
-            }
+
+            PrintCase(L"Exec");
+
             gBS->Stall(3000000);
-            Exec(&AppImageHandle);
+            Status = Exec(&AppImageHandle);
+
+            Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_LOAD_RESULT), NULL), Status);
+            UnicodeSPrint(Log, 0x200, u"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_LOAD_RESULT), NULL), Status);
+            LogToFile(LogFile, Log);
+
             break;
         case SKIP:
             
-            // Had to declare a new var because "next = next->next" will update on assertion
+            //Had to declare a new var because "next = next->next" will update on assertion
             skip_pos = AsciiStrDecimalToUintn(next->Name);
 
             if (isOpSkipAllowed == TRUE) {
-              if (ENG == TRUE) {
-                UnicodeSPrint(Log, 512, u"Skipping %d commands\n\r", skip_pos);
-                LogToFile(LogFile, Log);
-              }
-              else
-              {
-                Print(L"Пропускаем %d команд\n\r", skip_pos);
-                UnicodeSPrint(Log, 512, u"Пропускаем %d команд\n\r", skip_pos);
-                LogToFile(LogFile, Log);
-              }
+
+              Print(L"%s%d OP\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_CASE_SKIP), NULL), skip_pos);
+              UnicodeSPrint(Log, 0x200, u"%s%d OP\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_CASE_SKIP), NULL), skip_pos);
+              LogToFile(LogFile, Log);
+
               for (UINT8 i = 0; i < skip_pos - 1; i++) {
                 next = next->next;
               }
             }
             else
             {
-              if (ENG == TRUE) {
-                UnicodeSPrint(Log, 512, u"Last command returned: %r, skip not happened\n\r", Status);
-                LogToFile(LogFile, Log);
-              }
-              else
-              {
-                Print(L"Прошлая команда вернула: %r, переход не случился\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Прошлая команда вернула: %r, переход не случился\n\r", Status);
-                LogToFile(LogFile, Log);
-              }
+              Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_LAST_STATUS), NULL), Status);
+              UnicodeSPrint(Log, 0x200, u"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_LAST_STATUS), NULL), Status);
+              LogToFile(LogFile, Log);
             }
             isOpSkipAllowed = FALSE;
             break;
         case UNINSTALL_PROTOCOL:
             isOpSkipAllowed = FALSE;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing UninstallProtocol\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Выполняется аргумент UninstallProtocol\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент UninstallProtocol\n\r");
-              LogToFile(LogFile, Log);
-            }
+
+            PrintCase(L"UninstallProtocol");
+
             Status = UninstallProtocol(next->Name, UninstallIndexes);
-            if (Status != EFI_SUCCESS) {
-              if (ENG == TRUE) {
-                Print(L"Breaking cause: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Breaking cause: %r\n\r", Status);
-                LogToFile(LogFile, Log);
-              }
-              else
-              {
-                Print(L"Причина остановки: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Причина остановки: %r\n\r", Status);
-                LogToFile(LogFile, Log);
-              }
+            if (EFI_ERROR(Status)) {
+              Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_BREAKING_CAUSE), NULL), Status);
+              UnicodeSPrint(Log, 0x200, u"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_BREAKING_CAUSE), NULL), Status);
+              LogToFile(LogFile, Log);
+
               break;
             };
-            if (ENG == TRUE) {
-              Print(L"Protocol uninstalled\n\r");
-              UnicodeSPrint(Log, 512, u"Protocol uninstalled from %d handles\n\r", UninstallIndexes);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Протокол удален\n\r");
-              UnicodeSPrint(Log, 512, u"Протокол удален из %d дескрипторов\n\r", UninstallIndexes);
-              LogToFile(LogFile, Log);
-            }
+
+            gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_PROTOCOL_UNINSTALLED), NULL));
+            UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_PROTOCOL_UNINSTALLED), NULL));
+            LogToFile(LogFile, Log);
+
             isOpSkipAllowed = TRUE;
             break;
-        case UPDATE_DB:
+        case COMPATIBILITY:
             isOpSkipAllowed = FALSE;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing UpdateDB\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
+
+            PrintCase(L"Compatibility");
+            if (AsciiStrCmp(next->Name, "DB9A1E3D-45CB-4ABB-853B-E5387FDB2E2D") && AsciiStrCmp(next->Name, "389F751F-1838-4388-8390-CD8154BD27F8"))
             {
-              Print(L"Выполняется аргумент UpdateDB\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент UpdateDB\n\r");
-              LogToFile(LogFile, Log);
+              gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_RECOMMENDED_PROTOCOLS), NULL));
             }
-            Status = UpdateHiiDB(next->Name);
-            if (Status != EFI_SUCCESS) {
-              if (ENG == TRUE) {
-                Print(L"Breaking cause: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Breaking cause: %r\n\r", Status);
-                LogToFile(LogFile, Log);
-              }
-              else
-              {
-                Print(L"Причина остановки: %r\n\r", Status);
-                UnicodeSPrint(Log, 512, u"Причина остановки: %r\n\r", Status);
-                LogToFile(LogFile, Log);
-              }
+
+            Status = AsciiStrToGuid(next->Name, &FilterProtocol); //Now search for everything with this protocol
+            if (EFI_ERROR(Status))
+            {
+              Print(L"%s\"%a\"\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_CONVERTATION_FAILED), NULL), next->Name);
+              UnicodeSPrint(Log, 0x200, u"%s\"%a\"\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_CONVERTATION_FAILED), NULL), next->Name);
+              LogToFile(LogFile, Log);
+
               break;
-            };
-            if (ENG == TRUE) {
-              Print(L"DB updated\n\r");
-              UnicodeSPrint(Log, 512, u"DB updated\n\r");
-              LogToFile(LogFile, Log);
             }
-            else
-            {
-              Print(L"DB обновлена\n\r");
-              UnicodeSPrint(Log, 512, u"DB обновлена\n\r");
-              LogToFile(LogFile, Log);
-            }
-            isOpSkipAllowed = TRUE;
+
+            Print(L"%s%g\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_CURRENT_FILTER), NULL), FilterProtocol);
+            UnicodeSPrint(Log, 0x200, u"%s%g\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_CURRENT_FILTER), NULL), FilterProtocol);
+            LogToFile(LogFile, Log);
+
+            Status = EFI_NOT_FOUND; //This isn't an Op which loads Image, so it mustn't return Status from AsciiStrToGuid
             break;
-        case GET_DB:
+        case GET_DB:  //Unused
             isOpSkipAllowed = FALSE;
-            if (ENG == TRUE) {
-              UnicodeSPrint(Log, 512, u"%a", "Executing GetAptioDB\n\r");
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"Выполняется аргумент GetAptioDB\n\r");
-              UnicodeSPrint(Log, 512, u"Выполняется аргумент GetAptioDB\n\r");
-              LogToFile(LogFile, Log);
-            }
+
+            PrintCase(L"GetAptioDB");
+
             DBSize = GetAptioHiiDB( 0 ); DBPointer = GetAptioHiiDB( 1 );
-            Print(L"Size: %x, Pointer: %x\n\r", DBSize, DBPointer);
+
+            DEBUG_CODE(
+              //Debug
+              Print(L"Size: %x, Pointer: %x\n\r", DBSize, DBPointer);
+            );
+
             if (DBSize == 0 || DBPointer == 0) {
-              if (ENG == TRUE) {
-                Print(L"HiiDB not Found\n\r");
-                UnicodeSPrint(Log, 512, u"HiiDB not Found\n\r");
-                LogToFile(LogFile, Log);
-              }
-              else
-              {
-                Print(L"HiiDB не найдена\n\r");
-                UnicodeSPrint(Log, 512, u"HiiDB не найдена\n\r");
-                LogToFile(LogFile, Log);
-              }
+              Print(L"HiiDB not found\n\r");
+              UnicodeSPrint(Log, 0x200, u"HiiDB not found\n\r");
+              LogToFile(LogFile, Log);
+
               isDBThere = FALSE;
               Status = EFI_NOT_FOUND;
               break;
             }
-            if (ENG == TRUE) {
-              Print(L"HiiDB Found\n\r");
-              UnicodeSPrint(Log, 512, u"Size: %x, Pointer: %x\n\r", DBSize, DBPointer);
-              LogToFile(LogFile, Log);
-            }
-            else
-            {
-              Print(L"HiiDB найдена\n\r");
-              UnicodeSPrint(Log, 512, u"Размер: %x, Указатель: %x\n\r", DBSize, DBPointer);
-              LogToFile(LogFile, Log);
-            }
+            Print(L"HiiDB found\n\r");
+            UnicodeSPrint(Log, 0x200, u"Size: %x, Pointer: %x\n\r", DBSize, DBPointer);
+            LogToFile(LogFile, Log);
+
             isOpSkipAllowed = TRUE;
             isDBThere = TRUE;
             Status = EFI_NOT_FOUND; //This is ok
@@ -1800,7 +1391,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
             break;
         }
     }
-    //cleanup: //A leftover from Smokeless
+
     for (next = Start; next != NULL; next = next->next)
     {
         if (next->Name_Dyn_Alloc)
@@ -1829,17 +1420,10 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable){
         next = next->next;
         FreePool(tmp);
     }
-    if (ENG == TRUE) {
-      Print(L"\nProgram has ended\n\r");
-      UnicodeSPrint(Log, 512, u"\nProgram has ended\n\r");
-      LogToFile(LogFile, Log);
-    }
-    else
-    {
-      Print(L"\nКонец программы\n\r");
-      UnicodeSPrint(Log, 512, u"\nКонец программы\n\r");
-      LogToFile(LogFile, Log);
-    }
-    gBS->Stall(3000000);
+
+    gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_PROGRAM_END), NULL));
+    UnicodeSPrint(Log, 0x200, HiiGetString(HiiHandle, STRING_TOKEN(STR_PROGRAM_END), NULL));
+    LogToFile(LogFile, Log);
+
     return EFI_SUCCESS;
 }

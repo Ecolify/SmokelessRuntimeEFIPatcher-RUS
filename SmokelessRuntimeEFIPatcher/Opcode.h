@@ -64,8 +64,7 @@ EFI_STATUS LoadGUIDandSavePE(
   IN EFI_GUID FilterProtocol
 );
 
-EFI_STATUS
-LoadGUIDandSaveFreeform(
+EFI_STATUS LoadGUIDandSaveFreeform(
   IN EFI_HANDLE ImageHandle,
   OUT VOID **Pointer,
   OUT UINT64 *Size,
@@ -79,16 +78,9 @@ EFI_STATUS Exec(
   IN EFI_HANDLE *AppImageHandle
 );
 
-EFI_STATUS
-UninstallProtocol(
+EFI_STATUS UninstallProtocol(
   IN CHAR8 *ProtocolGuid,
   OUT UINTN Indexes
-);
-
-//Unused
-EFI_STATUS
-UpdateHiiDB(
-  IN CHAR8 *FormIdChar
 );
 
 //Unused
