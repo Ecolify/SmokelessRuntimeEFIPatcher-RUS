@@ -11,7 +11,7 @@
 	SmokelessRuntimeEFIPatcher.c
   Utility.c
   OpCode.c
-  RussianFont.c
+  EnglishFont.c
   Strings.uni
   Images.idf
   Logo.bmp
@@ -63,4 +63,4 @@
   gEfiAcpi20TableGuid                           ## CONSUMES
   gEfiDxeServicesTableGuid                      ## CONSUMES
   gEfiGlobalVariableGuid                        ## CONSUMES
-  gHIIRussianFontGuid                           ## PRODUCES
+  gHIIEnglishFontGuid                           ## PRODUCES
