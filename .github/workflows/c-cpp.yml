@@ -9,18 +9,18 @@ on:
 jobs:
   build:
 
-    runs-on: ubuntu-22.04
+    runs-on: fast
 
     steps:
     - name: Install Missing Tools
       run: sudo apt install nasm
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         repository: tianocore/edk2
         ref: 'edk2-stable202205'
         submodules : true
         path: edk2
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         path: edk2/SmokelessRuntimeEFIPatcher
     - name: Build Base Tools
@@ -29,7 +29,7 @@ jobs:
     - name: Build
       working-directory: edk2
       run: "source edksetup.sh && build -b RELEASE -t GCC5 -p SmokelessRuntimeEFIPatcher/SmokelessRuntimeEFIPatcher.dsc -a X64 -s"
-    - uses: actions/upload-artifact@v3.1.0
+    - uses: actions/upload-artifact@v4
       with:
         name: "SREP"
         path: edk2/Build/SmokelessRuntimeEFIPatcher/RELEASE_GCC5/X64/SmokelessRuntimeEFIPatcher.efi
