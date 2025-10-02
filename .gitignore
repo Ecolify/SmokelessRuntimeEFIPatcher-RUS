@@ -1,0 +1,13 @@
+# Ignore edk2 directory as it's cloned during CI
+edk2/
+
+# Ignore build artifacts
+*.o
+*.so
+*.a
+bin/
+libs/
+
+# Ignore temporary files
+/tmp/
+.DS_Store
