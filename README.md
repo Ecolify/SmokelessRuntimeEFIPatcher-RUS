@@ -1,38 +1,38 @@
-# SREP на Русском
-Копия утилиты за авторством SmokelessCPU, но с маленьким дополнением.
+# SREP in English
+A copy of the utility by SmokelessCPU, but with a small addition.
 
-# В чем разница в сравнении с оригиналом
-* Написал несколько комментариев в файлах исх. кода.
-* Появился Рус перевод для сообщений на экране и в логе, вывод в лог был приспособлен для кодировки Unicode. Сами сообщения учащены, чтобы прогресс выполнения лучше отслеживался, и у пользователя не возникало мысли что программа зависла.
-  </br>Переключение на Анг доступно через аргумент ENG (например, "SREP.efi ENG"). Но, как можно догадаться, тогда вызов SREP нужно осуществить через командную строку в Shell. Разрешается передавать параметр ENG в .nsh.
-  </br>С версии 0.2.0 для переключения языка нужно чтобы переменная PlatformLang была доступна для записи.
-* Файл конфига больше не обязан иметь название 'SREP_Config.cfg'. Теперь патчер выбирает в качестве конфига первый найденный файл с расширением '.cfg'.
-* Добавил 7 новых команд: NonamePE, NonameTE, LoadGUIDandSavePE, LoadGUIDandSaveFreeform, UninstallProtocol, Compatibility и Skip.
-  </br>В каких случаях могут быть полезны - далее.
-* Добавил поддержку абстрактных знаков (regex) для использования в строке шаблона. Классы знаков доступны [по ссылке](https://gist.github.com/kaigouthro/e8bad6a2c8df6ff13b8716027a172dc0#3-character-types).
-* По умолчанию, комбинация Patch - Pattern теперь заменяет все вхождения, а не только первое, которые соответствуют указанному шаблону.
-  </br>Старую реализацию Patch выделил в отдельную команду FastPatch.
-* Добавил игнорирование строк конфига включащие символ решетки "#". Применимо для написания комментариев в файле.
+# Differences compared to the original
+* Added several comments in the source code files.
+* Added English translation for on-screen and log messages, log output was adapted for Unicode encoding. The messages themselves are more frequent so that execution progress is better tracked, and users don't get the idea that the program has frozen.
+  </br>Switching to Russian is available through the RUS argument (for example, "SREP.efi RUS"). But, as you can guess, then the SREP call needs to be made through the command line in Shell. You can pass the RUS parameter in .nsh files.
+  </br>From version 0.2.0, for language switching, the PlatformLang variable needs to be writable.
+* The config file no longer has to be named 'SREP_Config.cfg'. Now the patcher chooses the first found file with '.cfg' extension as the config.
+* Added 7 new commands: NonamePE, NonameTE, LoadGUIDandSavePE, LoadGUIDandSaveFreeform, UninstallProtocol, Compatibility and Skip.
+  </br>When they might be useful - below.
+* Added support for abstract characters (regex) for use in pattern strings. Character classes are available [at this link](https://gist.github.com/kaigouthro/e8bad6a2c8df6ff13b8716027a172dc0#3-character-types).
+* By default, the Patch - Pattern combination now replaces all occurrences, not just the first one, that match the specified pattern.
+  </br>I separated the old Patch implementation into a separate FastPatch command.
+* Added ignoring of config lines containing the hash symbol "#". Applicable for writing comments in the file.
   <details>
-  <summary><strong>Пример комментариев</strong></summary>
-  # Здесь выбираем FilterProtocol</br>
+  <summary><strong>Comment example</strong></summary>
+  # Here we choose FilterProtocol</br>
   Op Compatibility</br>
   389F751F-1838-4388-8390-CD8154BD27F8</br>
   </details>
 
-# Как использовать
-1. Скомпильте исп. файл сами или загрузите со страницы релизов. Текущая версия - 0.2.0.
-2. Распакуйте файл на накопитель и сделайте его загрузочным.
-3. Создайте новый или скопируйте готовый конфиг в корень.
-4. Запустите.
+# How to use
+1. Compile the executable file yourself or download from the releases page. Current version - 0.2.0.
+2. Extract the file to storage and make it bootable.
+3. Create a new or copy a ready config to the root.
+4. Run.
 
-# Синтаксис для каждой из новых команд (с примерами)
-Операция в "<...>" опциональна.
+# Syntax for each of the new commands (with examples)
+Operation in "<...>" is optional.
 
     Op OpName
         GUID
-        # Команда LoadGUIDandSaveFreeform поддерживает до 2 модификаторов, но остальные команды только 1.
-        # В зависимости от наличия второго GUID, выбирается режим работы.
+        # LoadGUIDandSaveFreeform command supports up to 2 modifiers, but other commands only 1.
+        # Depending on the presence of the second GUID, the operating mode is selected.
         <GUID>
     <Op Patch>
         Argument 1
@@ -40,30 +40,30 @@
         Argument 3
     <End>
     
-    # Если драйвер ещё не в памяти.
+    # If the driver is not yet in memory.
     <Op Exec>
 
-### Значение
+### Values
 
-    OpName : Patch, LoadGUIDandSavePE, NonamePE, UninstallProtocol, Compatibility и остальные
-    GUID : GUID драйвера для поиска или протокола
+    OpName : Patch, LoadGUIDandSavePE, NonamePE, UninstallProtocol, Compatibility and others
+    GUID : Driver GUID for search or protocol
     Argument 1 : OFFSET, PATTERN, REL_NEG_OFFSET, REL_POS_OFFSET
-    Argument 2 : Модификатор для Argument 1 (например, HEX шаблон)
-    Argument 3 : HEX патч
+    Argument 2 : Modifier for Argument 1 (for example, HEX pattern)
+    Argument 3 : HEX patch
     
-# Добавленные команды
+# Added commands
 ## LoadGUIDandSavePE, LoadGUIDandSaveFreeform
-Загружают PE, RAW, FREEFORM секции модуля из Firmware Volume по GUID. Применимо когда у модуля нет имени, Op LoadFromFV не использовать. Редко для патчей, так как в память загружается вторая копия модуля.
-</br>Т.е. первая команда нужна для особых случаев когда у App, запуск которого инициирует вход в биос, нет секции UI.
-</br>Что делает команды менее бесполезными, это сохранение секции модуля как файл на флешку. Может выручить когда ни один способ дампа не работает.
-</br>Формат GUID как в UEFITool.
+Load PE, RAW, FREEFORM sections of a module from Firmware Volume by GUID. Applicable when a module has no name, don't use Op LoadFromFV. Rarely for patches, as a second copy of the module is loaded into memory.
+</br>That is, the first command is needed for special cases when an App, whose launch initiates BIOS entry, has no UI section.
+</br>What makes the commands less useless is saving the module section as a file to flash drive. Can help when no dump method works.
+</br>GUID format as in UEFITool.
   <details>
   <summary><strong>LoadGUIDandSavePE</strong></summary>
     
   ```
   Op LoadGUIDandSavePE
   
-  # Это SetupUtility
+  # This is SetupUtility
   FE3542FE-C1D3-4EF8-657C-8048606FF670
   ```
 
@@ -74,13 +74,13 @@
   ```
   Op LoadGUIDandSaveFreeform
   
-  # Это SmallLogo с section subtype RAW. GUID от File.
+  # This is SmallLogo with section subtype RAW. GUID from File.
   63819805-67BB-46EF-AA8D-1524A19A01E4
 
 
   Op LoadGUIDandSaveFreeform
   
-  # Это setupdata. У section subtype FREEFORM есть свой GUID, его тоже нужно указать, даже если они одинаковы.
+  # This is setupdata. Section subtype FREEFORM has its own GUID, it also needs to be specified, even if they are the same.
   FE612B72-203C-47B1-8560-A66D946EB371
   FE612B72-203C-47B1-8560-A66D946EB371
   ```
@@ -88,24 +88,24 @@
   </details>
 
 ## NonamePE, NonameTE
-Используют одну и ту-же функцию, с различием в лишь одном передаваемом значении.
+Use the same function, with only one passed value difference.
 
-* NonamePE - ищет секцию PE по GUID;
-* NonameTE - ищет секцию TE по GUID.
-</br>Синтаксис как у LoadGUIDandSavePE, но у этих команд область поиска RAM, вместо FV.
+* NonamePE - searches for PE section by GUID;
+* NonameTE - searches for TE section by GUID.
+</br>Syntax is like LoadGUIDandSavePE, but these commands search in RAM instead of FV.
 
-Работает таким образом, что сначала находится модуль в FV, но не RAM, соотв. введенному GUID. Вместо имени этого модуля, в отдельную переменную кладется его размер. Затем создается массив из модулей уже попавших в RAM. И размер каждого из этих модулей сравнивается с сохраненным значением, в упомянутой отдельной переменной. При совпадении цикл сравнения останавливается, функция возвращает ImageInfo текущего модуля.
+Works in such a way that first a module is found in FV, but not RAM, according to the entered GUID. Instead of this module's name, its size is put into a separate variable. Then an array is created from modules already loaded into RAM. And the size of each of these modules is compared with the saved value in the mentioned separate variable. When matched, the comparison loop stops, function returns ImageInfo of the current module.
 
-В этом подходе есть недостаток, при котором **в случае наличия модулей одинакового размера, будет выбран первый по порядку**.
+This approach has a disadvantage where **in case of modules of the same size, the first one in order will be selected**.
 
 ## UninstallProtocol
-Находит все дескрипторы с заданным протоколом и по очереди удаляет из них этот протокол.
-В случае провала, укажет порядковый номер дескриптора в буфере, у которого протокол удалить не удалось.
+Finds all handles with the given protocol and removes this protocol from them one by one.
+In case of failure, it will indicate the serial number of the handle in the buffer from which the protocol could not be removed.
 
 ## Compatibility
-Дает возможность задать фильтрующий протокол во всех функциях поиска. Если указанный GUID случаен, то программа не отвергает его, но на экран выдаются рекомендуемые.
+Allows setting a filtering protocol in all search functions. If the specified GUID is random, the program doesn't reject it, but recommended ones are displayed on screen.
 <details>
-<summary><strong>Выдача рекомендуемых</strong></summary>
+<summary><strong>Recommended output</strong></summary>
   
 ```
 Recommended protocols are:
@@ -117,10 +117,10 @@ DB9A1E3D-45CB-4ABB-853B-E5387FDB2E2D
 ```
 
 </details>
-Если Compatibility не использована вообще, SREP работает как обычно. Таким образом организована поддержка Insyde Rev. 3.
+If Compatibility is not used at all, SREP works as usual. This way support for Insyde Rev. 3 is organized.
 
 ## Skip
-Дает возможность пропускать указанное число команд (считаются только Op), если прошлая завершилась с успехом.
+Allows skipping the specified number of commands (only Op commands are counted) if the previous one completed successfully.
 
 # Todos
 
@@ -131,8 +131,8 @@ DB9A1E3D-45CB-4ABB-853B-E5387FDB2E2D
     [x] Rework on-screen and log outputs (make separate IFR package for each language)
     [ ] ?
 
-* Regex и Batch Replacement реализованы в tag 0.1.6.
-* UninstallProtocol и Insyde Rev. 3 Support реализованы в tag 0.1.7.
-* Текстовый вывод переработан в tag 0.2.0.
+* Regex and Batch Replacement implemented in tag 0.1.6.
+* UninstallProtocol and Insyde Rev. 3 Support implemented in tag 0.1.7.
+* Text output reworked in tag 0.2.0.
 
-Версии 0.1.6 и 0.1.7 удалены со страницы релизов из-за бага. Он заключался в том, что перед каждой следующей командой патча (Op Patch), массив хранящий смещения найденных вхождений шаблона не очищался. Поэтому самый последний "Op Patch" всегда заменял абсолютно все вхождения, которые были найдены за сеанс работы SREP.
+Versions 0.1.6 and 0.1.7 were removed from the releases page due to a bug. It consisted of the fact that before each next patch command (Op Patch), the array storing offsets of found pattern occurrences was not cleared. Therefore, the very last "Op Patch" always replaced absolutely all occurrences that were found during the SREP session.

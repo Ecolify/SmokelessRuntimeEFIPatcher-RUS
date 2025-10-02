@@ -5,7 +5,7 @@
 #include "Opcode.h"
 
 //Specify app version
-#define SREP_VERSION L"0.2.0 Xazanavi edition RUS"
+#define SREP_VERSION L"0.2.0 Xazanavi edition ENG"
 
 
 EFI_BOOT_SERVICES *_gBS = NULL;
@@ -169,11 +169,11 @@ CheckArgs(IN EFI_HANDLE ImageHandle) {
     &gEfiShellParametersProtocolGuid,
     (VOID **)&ShellParameters);
 
-    Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SHELL_STATUS), "en-GB"), Status);
-    UnicodeSPrint(Log, 0x200, u"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SHELL_STATUS), "en-GB"), Status);
+    Print(L"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SHELL_STATUS), "en-US"), Status);
+    UnicodeSPrint(Log, 0x200, u"%s%r\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_SHELL_STATUS), "en-US"), Status);
 
   if (Status == EFI_SUCCESS && ShellParameters->Argc > 1) {
-    if (!StrCmp(ShellParameters->Argv[1], L"ENG")) //Check for ENG arg, Argv[0] is app name
+    if (!StrCmp(ShellParameters->Argv[1], L"RUS")) //Check for RUS arg, Argv[0] is app name
     {
 
       SetVarStatus = gRT->SetVariable(
@@ -186,18 +186,18 @@ CheckArgs(IN EFI_HANDLE ImageHandle) {
 
       if (EFI_ERROR(SetVarStatus))
       {
-        Print(L"%s%r\n\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_LANG_VAR_WP), "en-GB"), SetVarStatus);
+        Print(L"%s%r\n\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_LANG_VAR_WP), "en-US"), SetVarStatus);
         gBS->Stall(3000000);
         return Status;
       }
 
-      gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_ENG_MODE), "en-GB"));
+      gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_RUS_MODE), "en-US"));
       return EFI_SUCCESS;
     }
     else
     {
-      //Reach this if arg is not "ENG" and there's more than 1
-      Print(L"%s%s\n\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_INVALID_LAUNCH_PARM), "en-GB"), ShellParameters->Argv[1]);
+      //Reach this if arg is not "RUS" and there's more than 1
+      Print(L"%s%s\n\n\r", HiiGetString(HiiHandle, STRING_TOKEN(STR_INVALID_LAUNCH_PARM), "en-US"), ShellParameters->Argv[1]);
       gBS->Stall(3000000);
       gBS->Exit(ImageHandle, 0, 0, 0);
     }
@@ -205,11 +205,11 @@ CheckArgs(IN EFI_HANDLE ImageHandle) {
   else
   {
     if (Status != EFI_SUCCESS) {
-      gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_LANG_SWITCH_DISABLED), "en-GB"));
+      gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_LANG_SWITCH_DISABLED), "en-US"));
     };
   }
   
-  gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_RUS_MODE), "en-GB"));
+  gST->ConOut->OutputString(gST->ConOut, HiiGetString(HiiHandle, STRING_TOKEN(STR_ENG_MODE), "en-US"));
   return Status;
 }
 
@@ -286,7 +286,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable) {
     extern UINT32 gSimpleFontWideBytes;
     extern EFI_NARROW_GLYPH gSimpleFontNarrowGlyphData[];
     extern UINT32 gSimpleFontNarrowBytes;
-    EFI_GUID gHIIRussianFontGuid;
+    EFI_GUID gHIIEnglishFontGuid;
 
     UINT8 *FontPackage = CreateSimpleFontPkg(
       gSimpleFontWideGlyphData,
@@ -295,7 +295,7 @@ SREPEntry(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable) {
       gSimpleFontNarrowBytes);
 
     EFI_HII_HANDLE FontHandle = HiiAddPackages(
-      &gHIIRussianFontGuid, //This is OK
+      &gHIIEnglishFontGuid, //This is OK
       NULL,
       FontPackage,
       NULL,
