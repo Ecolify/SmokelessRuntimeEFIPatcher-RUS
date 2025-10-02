@@ -14,13 +14,13 @@ jobs:
     steps:
     - name: Install Missing Tools
       run: sudo apt install nasm
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         repository: tianocore/edk2
         ref: 'edk2-stable202205'
         submodules : true
         path: edk2
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         path: edk2/SmokelessRuntimeEFIPatcher
     - name: Build Base Tools
@@ -33,7 +33,7 @@ jobs:
       working-directory: edk2/Build/SmokelessRuntimeEFIPatcher/RELEASE_GCC5/X64/
       run: "mkdir -p EFI/BOOT && cp SmokelessRuntimeEFIPatcher.efi  EFI/BOOT/BOOTX64.efi && zip SREP.zip -r EFI/"
     - name: Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         draft: true
         files: edk2/Build/SmokelessRuntimeEFIPatcher/RELEASE_GCC5/X64/SREP.zip
